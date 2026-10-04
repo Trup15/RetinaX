@@ -1,57 +1,59 @@
-# AI Engineer & Developer Rulebook — RetinaX
+# Engineering & Science Rules — RetinaX (improved)
 
-## 1. Core Engineering Principles
-1. **Never Crash on Missing Weights (Cold-Start Protocol):**
-   - If trained PyTorch weights (`.pth`) are not yet present in `models_weights/`, the backend **must not crash or exit**.
-   - It must automatically initialize the PyTorch models with standard ImageNet weights or execute the algorithmic fallback mode (OpenCV Laplacian blur detection + green-channel vessel contrast) and log: `[WARN] Operating in baseline computer-vision mode until fine-tuned weights are present.`
-2. **Never Assume Cloud Connectivity:**
-   - All backend code must run completely offline without calling external inference APIs (no OpenAI, no Anthropic, no cloud endpoints in the core screening path).
-3. **No Uncalibrated Softmax Probabilities:**
-   - Raw neural network softmax values must never be reported to doctors as "confidence". Always run Temperature Scaling ($T = 1.38$) and report Predictive Entropy $H(p)$.
-4. **Data Isolation (Zero Leakage):**
-   - Training: Exclusively on **APTOS 2019** (5-fold stratified cross-validation).
-   - Validation Tuning: Temperature scaling $T$ is tuned on the APTOS validation fold.
-   - **IDRiD** and **DDR** are external test sets and must NEVER be used for training, learning rate adjustment, or temperature fitting.
-5. **Ordinal Severity Metrics:**
-   - DR severity is ordinal (0 to 4). Always report Quadratic Weighted Kappa (QWK) alongside Macro F1 and Accuracy.
+## A. Science rules (from the blueprint; violating any of these invalidates results)
+1. **Split discipline.** APTOS → {internal test (held out once), 5 dev folds}. IDRiD and DDR-test are external:
+   never used to train, early-stop, select a checkpoint, fit temperature, choose a referral/XAI threshold, or pick a fold.
+2. **DDR is used in two separate roles — keep them separate:**
+   - DDR `train`/`valid` lists → train/select the **quality model only**.
+   - DDR `test` list → external evaluation of the DR classifier **and** of the full gated pipeline.
+   - DDR is never used to train, calibrate or threshold the **DR classifier**.
+3. **One model is declared "primary" before any external number is seen** (default: the fold-0 model; configurable in
+   `configs/default.yaml: primary_fold`). External results are reported for it; the other 4 fold models are used only for
+   mean ± SD and the optional ensemble.
+4. **Calibration and thresholds come from the APTOS validation fold of the primary model only.** Saved to
+   `artifacts/calibration.json`. Loaded, never recomputed, at inference.
+5. **Preprocessing is one function** (`retinax.preprocessing.preprocess`) used for train, val, test, external, XAI and API.
+6. **Report, don't promise.** Every number in a table/figure/UI comes from a file under `outputs/` written by a script.
+   Targets in the PRD are hypotheses. No fabricated or "typical" numbers in code, UI or docs.
+7. **QWK, balanced accuracy, macro-F1 and per-class recall** are always reported with accuracy. Rare classes (3, 4) matter.
+8. **Lesion overlap needs ground truth.** It is computed only for datasets with masks (IDRiD segmentation subset).
+9. Duplicates/near-duplicates must not straddle splits (perceptual-hash groups; see `ml_protocol.md §1`).
+10. Claims stay cautious: "offline-capable", "designed toward rural screening". Never "clinically validated/deployed".
 
----
+## B. Cold-start rule (replaces the old "heuristic fallback" rule)
+The old rule let a pixel-counting heuristic output a DR stage. That is unsafe and scientifically indefensible, and on the
+spec's own synthetic images it labelled every image Stage 4. New rule:
+- Missing or unloadable **DR weights** → backend still starts. `/health` reports `models: {dr: false}`. `/screen` returns the
+  quality-gate result (heuristic metrics are real measurements) and `classification: null`,
+  `clinical_action: "MODEL_NOT_LOADED"`. Log `[WARN] DR model not loaded; grading disabled.`
+- Weights whose metadata says `trained_on: "synthetic_smoke"` load fine but every response carries
+  `model_provenance: "synthetic_smoke"` and the UI shows a red "DEMO MODEL — NOT FOR CLINICAL USE" banner.
+- Never download weights silently at API start. Pretrained ImageNet weights are only fetched by training scripts
+  (`--pretrained`, default true outside smoke mode) and the fetch failure is a clear error with the offline workaround.
 
-## 2. Python & Backend Standards
-- **Python Version:** 3.10 or 3.11 with strict type annotations (`typing.List`, `typing.Optional`, `Annotated`).
-- **Framework:** FastAPI with `async def` endpoints. Use Pydantic v2 for data validation (`from pydantic import BaseModel, Field`).
-- **Computer Vision & ML Libraries:**
-  - `torch >= 2.0.0`, `torchvision >= 0.15.0`
-  - `timm` for EfficientNet-B3 backbone initialization
-  - `opencv-python-headless` (never install GUI `opencv-python` on headless servers)
-  - `albumentations` for image augmentation and preprocessing
-  - `scipy` and `scikit-learn` for ECE, QWK, and statistical tests
-- **PyTorch GPU/CPU Dynamic Fallback:**
-  ```python
-  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-  ```
-  Every model and tensor operation must be hardware-agnostic.
-- **Image Upload Handling:** Read image bytes using `io.BytesIO` and decode using `cv2.imdecode` or `PIL.Image.open`. Do NOT write temporary files to disk unless caching.
-- **Error Handling:** Use standard `HTTPException` with structured details:
-  ```python
-  raise HTTPException(status_code=400, detail={"code": "INVALID_IMAGE", "message": "Failed to decode fundus image."})
-  ```
+## C. Python / backend standards
+- Python 3.10–3.12. Type hints. Pydantic v2. FastAPI. Compute endpoints are plain `def` (not `async def`) so the
+  event loop is not blocked by torch/OpenCV; I/O-only endpoints may be `async`.
+- Device: `cuda if available else cpu` via one helper `retinax.utils.get_device()`; env `RETINAX_DEVICE` overrides.
+- `torch.inference_mode()` for inference. `torch.load(path, map_location="cpu", weights_only=True)`; checkpoints are
+  plain dicts (`state_dict` + JSON-able metadata) so this works.
+- Image bytes → `cv2.imdecode`; never write uploads to disk. Reject > 15 MB and non-images with
+  `HTTPException(400, {"code": "INVALID_IMAGE", ...})`. **Do not catch `HTTPException` in a blanket `except Exception`.**
+- `opencv-python-headless` only. Augmentation is plain numpy/OpenCV (`reference/augment.py`); no albumentations.
+- Seeds: `seed_everything(cfg.seed)` (python, numpy, torch, cuda); log seed, versions, GPU, git hash into every run's `run_info.json`.
+- All paths come from config or env, resolved relative to the repo root (`Path(__file__)`-based), never the CWD.
+- Everything runnable as `python -m retinax.<module> --config configs/<name>.yaml`.
 
----
+## D. Frontend standards (unchanged intent)
+- Light clinical theme, 3-zone top bar, tabular numerals for probabilities, no `alert()/confirm()`, no chatbots.
+- If the backend is unreachable: show "Operating in Client-Side Edge Mode" and run **only** the client-side quality
+  check (Laplacian variance, illumination). The client must **not** display a DR grade, heatmap, or lesion metrics
+  in that mode.
+- Research-summary page reads `GET /api/v1/results` (serves files from `outputs/tables/`). No numbers embedded in TS.
+  If no results exist, show "No experiment results yet".
 
-## 3. Frontend & TypeScript Standards
-- **No Mock Fallback Regressions:** If the Python backend server is offline or unreachable, the frontend must smoothly fall back to the built-in client-side canvas image analyzer (`src/utils/imageAnalyzer.ts`) with a clear indicator: *"Operating in Client-Side Edge Mode"*.
-- **Strict Single-Line Top Bar Contract:** Exactly 3 zones (Wordmark `RetinaX` | 3 nav links | 1 primary action button).
-- **Design Constitution:**
-  - Maintain the clean, clinical light theme (`bg-slate-50`, `bg-white`, `border-slate-200`).
-  - No "pill sandwiches" or unneeded badges. Use clean unboxed metadata with `·` dividers.
-  - Tabular numerals (`font-mono tabular-nums`) for medical probabilities and coordinates.
-- **No Alert Dialogs:** Never use `window.alert()` or `window.confirm()`. Use the custom `ReferralModal.tsx` or clean toasts.
-
----
-
-## 4. What the AI Should Avoid
-- ❌ Do NOT add chatbots, chat bubbles, or conversational "Ask AI" widgets.
-- ❌ Do NOT modify weights or thresholds using the external test sets (IDRiD / DDR).
-- ❌ Do NOT store patient healthcare data without local SQLite / PostgreSQL schema validation.
-- ❌ Do NOT use deprecated PyTorch methods (e.g. use `torch.no_grad()` or `torch.inference_mode()`).
+## E. What the AI must avoid
+- Hard-coded T, thresholds, Dice/IoU, ECE, accuracy, latency or "selective accuracy" values.
+- Returning lesion-overlap metrics from `/screen` for uploaded images.
+- `localStorage` secrets, patient data written outside the DB, cloud inference calls in the screening path.
+- Deprecated torch idioms. `pickle`-based loading of untrusted files.

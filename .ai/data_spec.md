@@ -1,101 +1,47 @@
-# Data Specification & Local Test Generation — RetinaX
+# Data Specification — RetinaX (improved)
 
-This document provides both the **official dataset acquisition steps** and a **zero-dependency test data generator** so you can develop and test the entire backend immediately without downloading multi-gigabyte datasets.
-
----
-
-## 1. Quick Start: Zero-Download Synthetic Test Data Generator
-Run this script to immediately create a realistic local test dataset in `datasets/test_cohort/` (takes 2 seconds, no Kaggle account needed):
-
-```python
-# Save as: scripts/generate_test_cohort.py
-import os
-import cv2
-import numpy as np
-
-def generate_synthetic_fundus(filename, dr_stage=0, is_blurry=False):
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    img = np.zeros((512, 512, 3), dtype=np.uint8)
-    
-    # Background orange-red retina
-    cv2.circle(img, (256, 256), 220, (15, 45, 180), -1)
-    
-    # Optic disc (yellowish)
-    cv2.circle(img, (160, 260), 28, (20, 160, 240), -1)
-    
-    # Macula (darker red)
-    cv2.circle(img, (310, 260), 30, (8, 20, 100), -1)
-    
-    # Blood vessels
-    cv2.line(img, (160, 260), (340, 120), (5, 10, 80), 3)
-    cv2.line(img, (160, 260), (340, 400), (5, 10, 80), 3)
-    
-    # Inject lesions according to DR stage
-    if dr_stage >= 1: # Microaneurysms
-        for _ in range(8):
-            rx, ry = np.random.randint(200, 360), np.random.randint(180, 340)
-            cv2.circle(img, (rx, ry), 2, (0, 0, 140), -1)
-            
-    if dr_stage >= 2: # Hard Exudates (yellow spots)
-        for _ in range(12):
-            ex, ey = np.random.randint(220, 380), np.random.randint(200, 320)
-            cv2.circle(img, (ex, ey), 3, (120, 230, 250), -1)
-            
-    if dr_stage >= 3: # Blot Hemorrhages
-        for _ in range(6):
-            hx, hy = np.random.randint(180, 380), np.random.randint(160, 360)
-            cv2.circle(img, (hx, hy), 7, (0, 0, 160), -1)
-
-    if is_blurry:
-        img = cv2.GaussianBlur(img, (31, 31), 15)
-
-    cv2.imwrite(filename, img)
-
-if __name__ == "__main__":
-    generate_synthetic_fundus("datasets/test_cohort/normal_eye.jpg", dr_stage=0)
-    generate_synthetic_fundus("datasets/test_cohort/mild_dr.jpg", dr_stage=1)
-    generate_synthetic_fundus("datasets/test_cohort/moderate_dr.jpg", dr_stage=2)
-    generate_synthetic_fundus("datasets/test_cohort/severe_dr.jpg", dr_stage=3)
-    generate_synthetic_fundus("datasets/test_cohort/blurry_ungradable.jpg", dr_stage=2, is_blurry=True)
-    print("Generated 5 realistic test images in datasets/test_cohort/")
-```
-
-Run it via:
+## 1. Zero-download smoke data (use this first)
+`reference/make_synthetic_data.py` (copy to `scripts/`) builds small stand-ins for all three datasets **and** the canonical
+metadata CSVs the pipeline consumes:
 ```bash
-python scripts/generate_test_cohort.py
+python scripts/make_synthetic_data.py --out smoke_data --n-aptos 80 --n-idrid 16 --n-ddr 48
 ```
+It has black borders, varying image sizes, stage-dependent lesions, per-lesion masks for IDRiD-like images, and DDR-like
+"class 5" ungradable images (blurred or under-exposed). It is **only** for proving the code runs. Results on it mean nothing
+and must never be reported. The older spec's generator (5 images, fixed sizes, no masks) is superseded.
 
----
+## 2. Official datasets (human downloads; see README_FIRST "Actions only the human can do")
+| Dataset | Role | Notes to verify after download |
+|---|---|---|
+| APTOS 2019 (Kaggle `aptos2019-blindness-detection`) | train / val / internal test / calibration | Only `train.csv` (3,662 labelled) is usable; `test.csv` is unlabelled. `id_code`, `diagnosis` 0–4. Images vary in size; many have black borders. |
+| IDRiD (IEEE Dataport DOI 10.21227/H25W98, or a Kaggle mirror) | external grading (516) + lesion validation (segmentation subset) | Grading CSV has image name, retinopathy grade, macular-edema risk. Masks (MA, HE, EX, SE; optionally OD) exist only for the segmentation subset (reported 81 images). Match by file stem. |
+| DDR | quality model (train/valid lists) + external DR evaluation (test list) | Grades 0–4, class 5 = ungradable (verify in the label files). Use the official split lists. |
+| EyePACS | optional, later | Not needed for the first build. |
+Kaggle mirrors differ from the official layouts. The agent lists the folder first, then writes `prepare_*.py`.
+If a download requires credentials the agent does not have, it **stops and asks**; it never substitutes synthetic data for real results.
 
-## 2. Official Production Datasets (Kaggle & IEEE)
+## 3. Canonical metadata CSVs (the only thing downstream code reads)
+Paths are relative to the data root (`RETINAX_DATA_ROOT`, default `./data`; smoke data root is `./smoke_data`).
+- `metadata/aptos_meta.csv`: `image_path, label (0-4), patient_id (may equal image id)`
+- `metadata/aptos_splits.csv` (written by `build_splits`): above + `group, split (dev|test), fold (0-4 for dev, -1 for test)`
+- `metadata/idrid_meta.csv`: `image_path, label (0-4), ma_mask, he_mask, ex_mask, se_mask, has_masks (0|1)`;
+  mask columns are a relative path or an empty string (empty = lesion type absent/unannotated for that image).
+- `metadata/ddr_meta.csv`: `image_path, label (0-5), gradable (0|1; 0 iff label==5), split (train|valid|test)`
+- `metadata/*_cache.csv` (written by `build_cache`): the table above + `cache_path, box_x0, box_y0, box_x1, box_y1, pad_top, pad_left, side, size`
+Rules: deterministic row order; assert files exist; assert label ranges; log class counts per split.
 
-### Dataset 1: APTOS 2019 Blindness Detection
-- **Role:** Primary training & temperature scaling calibration ($T = 1.38$).
-- **Size:** $3,662$ labeled train images, $1,928$ test images.
-- **Attributes in `train.csv`:**
-  - `id_code`: Image filename without extension (e.g. `000c1434d8d7`).
-  - `diagnosis`: Integer DR grade ($0$: Normal, $1$: Mild, $2$: Moderate, $3$: Severe, $4$: Proliferative).
-- **Download Command:**
-  ```bash
-  kaggle competitions download -c aptos2019-blindness-detection
-  unzip aptos2019-blindness-detection.zip -d datasets/aptos2019/
-  ```
+## 4. Folder layout
+```
+data/                 # real data (gitignored)      smoke_data/   # synthetic (gitignored)
+metadata/             # canonical CSVs (small; commit them)
+cache/<size>_<clahe>/ # preprocessed uint8 PNG cache (gitignored)
+artifacts/            # dr_effb3_fold{0..4}.pt, quality_mnv3s.pt, calibration.json, quality_threshold.json
+outputs/{predictions,tables,figures,xai_maps,calibration,uncertainty}/
+```
+Add `data/`, `smoke_data/`, `cache/`, `outputs/`, `artifacts/*.pt`, `*.db` to `.gitignore`.
 
-### Dataset 2: IDRiD (Indian Diabetic Retinopathy Image Dataset)
-- **Role:** External Indian generalization validation + Ground-truth lesion segmentation (Objective 4).
-- **Size:** $516$ fundus photographs with pixel-level lesion binary `.tif` masks.
-- **Sub-folders:**
-  - `1_microaneurysms/`: Microaneurysm binary masks.
-  - `2_haemorrhages/`: Intraretinal hemorrhage binary masks.
-  - `3_hard_exudates/`: Hard exudate binary masks.
-  - `4_soft_exudates/`: Cotton wool spot binary masks.
-- **Download:** [IEEE Dataport (DOI: 10.21227/H25W98)](https://ieee-dataport.org/open-access/indian-diabetic-retinopathy-image-dataset-idrid) or:
-  ```bash
-  kaggle datasets download -d mariaherrerot/idrid-dataset
-  unzip idrid-dataset.zip -d datasets/idrid/
-  ```
-
-### Dataset 3: DDR (Diabetic Retinopathy Dataset)
-- **Role:** Training the MobileNetV3-Small quality gate (label `5` = ungradable/blur/cataract).
-- **Size:** $13,673$ fundus images across 147 hospitals.
-- **Download:** Kaggle `ddr-dataset` or GitHub DDR benchmark repo.
+## 5. Checkpoint format
+`torch.save({"state_dict": sd, "meta": {"arch": "efficientnet_b3", "num_classes": 5, "img_size": 384, "mean": [...], "std": [...],
+"clahe": false, "class_names": [...], "trained_on": "aptos_dev_fold0" | "synthetic_smoke", "epoch": n, "val_qwk": x,
+"seed": s, "timm_version": "..."}}, path)`. The meta block is read by the API and by evaluation, so inference never depends on
+config defaults that may have changed since training.

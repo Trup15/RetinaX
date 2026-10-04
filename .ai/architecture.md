@@ -1,186 +1,88 @@
-# System Architecture — RetinaX
+# System Architecture — RetinaX (improved)
 
-## 1. High-Level Architectural Diagram
+## 1. Design principle: library first, apps second
+One installable Python package, `retinax` (under `src/`, `pip install -e .`), holds **all** ML logic. The experiment scripts and the FastAPI
+backend are thin wrappers that import it. This guarantees training, evaluation, XAI and the API share the same preprocessing,
+model loading, calibration and uncertainty code (the old layout duplicated logic inside `main.py`).
 
 ```
-+-----------------------------------------------------------------------------------+
-|                                 CLIENT TIER                                       |
-|  React 19 + TypeScript + Tailwind CSS (Vite SPA)                                  |
-|  - Viewport Canvas (500x500 FOV, CLAHE, Jet Colormap XAI Overlay)                 |
-|  - Patient Screening Console (Sample Cohorts & Drag-and-Drop Image Uploader)       |
-|  - Specialist Referral Generator (Printable Clinical Sheet)                       |
-|  - Interactive Benchmark Labs (Dice/IoU Scrubber, Risk-Coverage Simulator)         |
-+------------------------------------------+----------------------------------------+
-                                           | HTTP REST API (JSON + Multipart)
-                                           v
-+-----------------------------------------------------------------------------------+
-|                                BACKEND TIER                                       |
-|  FastAPI (Python 3.10+) + Uvicorn Async Server                                    |
-|                                                                                   |
-|  [ Router Tier: /api/v1 ]                                                         |
-|  +-- /screen          : Upload fundus image -> Full inference pipeline           |
-|  +-- /quality         : MobileNetV3-Small quality gate check only                 |
-|  +-- /classify        : EfficientNet-B3 5-stage inference + Temperature Scaling   |
-|  +-- /explain         : Grad-CAM++ / Score-CAM / Integrated Gradients heatmap    |
-|  +-- /validate-lesion : Calculate Dice / IoU against IDRiD lesion masks          |
-|  +-- /referrals       : Store and list specialist referral records               |
-|                                                                                   |
-|  [ Machine Learning & Computer Vision Services ]                                 |
-|  +-- QualityGateService     : MobileNetV3-Small (Weights: quality_mobilenetv3.pt) |
-|  +-- DRClassifierService    : EfficientNet-B3 (Weights: dr_efficientnet_b3.pt)     |
-|  +-- CalibrationEngine      : Temperature Scaling (T = 1.38) + Shannon Entropy   |
-|  +-- SaliencyEngine         : PyTorch hooks for Grad-CAM++ & Integrated Gradients |
-|  +-- LesionOverlapService   : Discrete grid set-intersection & Pointing Game      |
-|  +-- PreprocessingService   : Circular FOV mask, auto-crop, CLAHE (OpenCV)        |
-+------------------------------------------+----------------------------------------+
-                                           | SQLAlchemy ORM
-                                           v
-+-----------------------------------------------------------------------------------+
-|                                 DATA PERSISTENCE                                  |
-|  SQLite (Local Dev / Edge Kiosk) OR PostgreSQL (Hospital Deployment)              |
-|  - patients: id, age, gender, medical_record_num                                  |
-|  - screenings: id, patient_id, eye, image_path, quality_status, stage, entropy,   |
-|               temperature, referral_status, xai_heatmap_path, created_at          |
-|  - lesion_annotations: id, screening_id, lesion_type, polygon_geojson             |
-|  - model_checkpoints: id, model_name, version, fp32_size_mb, int8_size_mb, ece    |
-+-----------------------------------------------------------------------------------+
+CLIENT (React 19 + TS + Vite + Tailwind)  ──HTTP/JSON──▶  BACKEND (FastAPI)  ──imports──▶  retinax (PyTorch, OpenCV, timm)
+                                                              │                                   │
+                                                              ▼                                   ▼
+                                                       SQLite (referrals)               artifacts/ (weights, calibration.json)
 ```
 
----
-
-## 2. Recommended Repository Structure (Monorepo)
-
+## 2. Repository layout
 ```
 retinax-root/
-+-- .ai/                          # Agent specifications & memory
-|   +-- prd.md
-|   +-- architecture.md
-|   +-- rules.md
-|   +-- design.md
-|   +-- tasks.md
-|   +-- memory.md
-|   +-- current_state.md
-|   +-- data_spec.md
-|   +-- backend_integration.md
-+-- frontend/                     # React 19 + TypeScript + Vite (Current App)
-|   +-- src/
-|   |   +-- components/
-|   |   |   +-- SimpleScreener.tsx
-|   |   |   +-- RetinalCanvasViewer.tsx
-|   |   |   +-- SimpleLesionValidation.tsx
-|   |   |   +-- SimpleResearchSummary.tsx
-|   |   |   +-- ReferralModal.tsx
-|   |   +-- types/
-|   |   |   +-- pipeline.ts
-|   |   +-- utils/
-|   |   |   +-- retinalImageProcessor.ts
-|   |   |   +-- imageAnalyzer.ts
-|   |   |   +-- apiClient.ts      # Connects frontend to backend API
-|   |   +-- data/
-|   |   |   +-- sampleCohorts.ts
-|   |   |   +-- researchBenchmarks.ts
-|   |   +-- App.tsx
-|   |   +-- main.tsx
-|   +-- package.json
-|   +-- vite.config.ts
-+-- backend/                      # Python FastAPI + PyTorch Backend
-|   +-- app/
-|   |   +-- api/
-|   |   |   +-- v1/
-|   |   |       +-- endpoints/
-|   |   |           +-- screening.py
-|   |   |           +-- quality.py
-|   |   |           +-- explainability.py
-|   |   |           +-- referrals.py
-|   |   |           +-- cohorts.py
-|   |   |       +-- api_router.py
-|   |   +-- core/
-|   |   |   +-- config.py         # App settings & env vars
-|   |   |   +-- security.py
-|   |   +-- db/
-|   |   |   +-- session.py        # SQLAlchemy database engine
-|   |   |   +-- models.py         # Patient, Screening, Referral tables
-|   |   +-- ml/
-|   |   |   +-- models/
-|   |   |   |   +-- mobilenet_quality.py   # MobileNetV3-Small architecture
-|   |   |   |   +-- efficientnet_dr.py     # EfficientNet-B3 architecture
-|   |   |   +-- weights/
-|   |   |   |   +-- quality_gate.pth       # Trained on DDR / EyePACS ungradables
-|   |   |   |   +-- efficientnet_b3_aptos.pth # Trained on APTOS 2019
-|   |   |   +-- xai/
-|   |   |   |   +-- gradcam_pp.py          # Grad-CAM++ implementation
-|   |   |   |   +-- scorecam.py            # Score-CAM implementation
-|   |   |   |   +-- integrated_gradients.py # Integrated Gradients
-|   |   |   +-- calibration/
-|   |   |   |   +-- temperature_scaling.py # Temperature scaler (T=1.38)
-|   |   |   |   +-- mc_dropout.py          # Monte Carlo Dropout sampler
-|   |   |   +-- evaluation/
-|   |   |       +-- lesion_metrics.py      # Dice, IoU, Pointing Game on IDRiD
-|   |   |   +-- preprocessing/
-|   |   |       +-- fov_crop.py            # Circular FOV mask & black margin crop
-|   |   |       +-- clahe.py               # Green channel CLAHE
-|   |   +-- schemas/
-|   |   |   +-- screening.py      # Pydantic request/response models
-|   |   |   +-- referral.py
-|   |   +-- services/
-|   |   |   +-- pipeline_service.py # Orchestrates Quality -> DR -> XAI -> Referral
-|   |   +-- main.py               # FastAPI application entrypoint
-|   +-- tests/
-|   |   +-- test_quality.py
-|   |   +-- test_classifier.py
-|   |   +-- test_xai.py
-|   +-- Dockerfile
-|   +-- requirements.txt
-+-- models_weights/               # Directory for trained .pt / .onnx / .tflite weights
-+-- datasets/                     # Directory for dataset paths (APTOS, IDRiD, DDR)
+├── .ai/                      # these spec files
+├── docs/diabetic_retinopathy_project_blueprint.md
+├── pyproject.toml            # package "retinax" (src layout), extras: [dev], [xai], [deploy]
+├── requirements.txt          # see templates/requirements.txt
+├── configs/default.yaml, smoke.yaml
+├── metadata/                 # canonical CSVs
+├── src/retinax/
+│   ├── config.py             # load YAML + env overrides -> dataclass; resolves paths from repo root
+│   ├── utils.py              # get_device, seed_everything, run_info, logging
+│   ├── data/                 # prepare_{aptos,idrid,ddr}.py, build_splits.py, build_cache.py, datasets.py
+│   ├── preprocessing/        # preprocess.py (from reference/fundus_preproc.py), augment.py
+│   ├── models/               # factory.py (timm create), io.py (save/load ckpt+meta)
+│   ├── train/                # train_dr.py, train_quality.py, losses.py
+│   ├── eval/                 # evaluate_dr.py, metrics.py (QWK, F1, AUROC, bootstrap), quality_eval.py
+│   ├── uncertainty/          # calibrate.py, metrics.py (from reference), mc_dropout.py, analyze.py, referral.py
+│   ├── xai/                  # cams.py (GradCAM++/ScoreCAM), ig.py, baselines.py, lesion_metrics.py (from reference), run_lesion_validation.py
+│   ├── deploy/               # benchmark.py, export_onnx.py
+│   └── pipeline.py           # RetinaXPipeline: quality gate -> DR -> calibrated uncertainty -> referral -> optional XAI
+├── backend/
+│   ├── __init__.py
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py           # FastAPI app, lifespan loads RetinaXPipeline once
+│       ├── api/v1/{screening.py, referrals.py, results.py, cohorts.py}
+│       ├── schemas.py        # Pydantic v2
+│       └── db.py             # SQLAlchemy 2.0 (SQLite default)
+├── frontend/                 # Vite React TS app (see design.md); may need to be created
+├── scripts/                  # make_synthetic_data.py, run_smoke_test.py
+├── tests/                    # pytest (see tasks.md)
+├── artifacts/  outputs/  cache/  data/  smoke_data/   # gitignored where large
 ```
+Import paths: ML code `from retinax...`; API run from repo root: `python -m uvicorn backend.app.main:app --port 8000`.
+(The old `cd backend && python -m app.main` / `uvicorn.run("main:app")` combination fails with an import error.)
 
----
+## 3. Command-line interface (every command: `python -m <module> --config configs/<name>.yaml [flags]`)
+| # | Module | Reads | Writes |
+|---|---|---|---|
+| 1 | `retinax.data.build_splits` | `metadata/aptos_meta.csv` | `metadata/aptos_splits.csv` |
+| 2 | `retinax.data.build_cache` | all meta CSVs | `cache/...`, `metadata/*_cache.csv` |
+| 3 | `retinax.train.train_dr --fold N` | cache + splits | `artifacts/dr_effb3_fold{N}.pt`, `outputs/predictions/aptos_fold{N}_val.npz` |
+| 4 | `retinax.train.train_quality` | `ddr_cache.csv` | `artifacts/quality_mnv3s.pt`, `outputs/tables/quality_*.json` |
+| 5 | `retinax.eval.evaluate_dr --dataset {aptos_test,idrid,ddr_test}` | primary ckpt | `outputs/predictions/<ds>_primary.npz`, `outputs/tables/dr_<ds>.json` |
+| 6 | `retinax.uncertainty.calibrate` | `aptos_fold{primary}_val.npz` | `artifacts/calibration.json`, `outputs/calibration/*` |
+| 7 | `retinax.uncertainty.analyze` | predictions + calibration | `outputs/tables/uncertainty_*.json`, `outputs/uncertainty/*`, risk-coverage CSV/PNG |
+| 8 | `retinax.xai.run_lesion_validation` | primary ckpt + IDRiD masks | `outputs/tables/xai_lesion.csv`, `outputs/xai_maps/*`, summary JSON |
+| 9 | `retinax.deploy.benchmark` | checkpoints | `outputs/tables/deploy_benchmark.json` |
+| 10 | `retinax.pipeline --image PATH` | artifacts | JSON to stdout (same schema as the API) |
+| 11 | `retinax.results_summary` | `outputs/tables/*` | `outputs/tables/summary.json` (served by `/api/v1/results`, rendered by the UI) |
+Every command returns exit code 0 on success, non-zero with a one-line cause on failure, and writes `run_info.json`.
 
-## 3. Core API Endpoints
-
-### 3.1 `POST /api/v1/screen`
-- **Description:** Runs the complete end-to-end pipeline on an uploaded fundus image.
-- **Request:** `multipart/form-data` with `file: UploadFile`, `eye: 'OD' | 'OS'`, `patient_id: Optional[str]`, `xai_method: 'GRAD_CAM_PP' | 'SCORE_CAM' | 'INTEGRATED_GRADIENTS'`.
-- **Response:**
-```json
-{
-  "screening_id": "scr_9823482",
-  "quality": {
-    "status": "GRADABLE",
-    "gradable_probability": 0.974,
-    "ungradable_probability": 0.026,
-    "optical_sharpness_variance": 42.1,
-    "illumination_uniformity": 0.94
-  },
-  "classification": {
-    "predicted_stage": 2,
-    "stage_name": "Moderate Non-Proliferative DR",
-    "calibrated_confidence": 0.784,
-    "raw_probabilities": [0.03, 0.12, 0.78, 0.05, 0.02],
-    "calibrated_probabilities": [0.05, 0.14, 0.72, 0.06, 0.03]
-  },
-  "uncertainty": {
-    "temperature": 1.38,
-    "predictive_entropy": 0.642,
-    "entropy_threshold": 0.85,
-    "is_uncertain": false,
-    "mc_dropout_variance": 0.0034,
-    "clinical_action": "ACCEPT_DIAGNOSIS"
-  },
-  "explainability": {
-    "method": "GRAD_CAM_PP",
-    "heatmap_data_url": "data:image/png;base64,iVBORw0KGgo...",
-    "heatmap_base64": "data:image/png;base64,iVBORw0KGgo...",
-    "lesion_overlap": {
-      "dice": 0.542,
-      "iou": 0.371,
-      "pointing_game_hit": true,
-      "recall": 0.694
-    }
-  }
-}
+## 4. Pipeline logic (`RetinaXPipeline.screen(image_bgr, xai_method=None)`)
 ```
+decode → preprocess(img_size) ──▶ quality model (320 px, own preprocess of same crop) → p_ungradable
+   p_ungradable ≥ quality threshold? ── yes ──▶ {status: UNGRADABLE, action: RECAPTURE_IMAGE, classification: null}
+   no ──▶ DR model → logits → calibrated probs (T from calibration.json) → entropy_norm (+ MC-Dropout if enabled)
+        entropy ≥ tau (from calibration.json)? ── yes ──▶ action: SPECIALIST_REFERRAL (grade still returned as "suggested")
+        no ──▶ action: ACCEPT_GRADE
+   optional: heatmap (Grad-CAM++ default) overlay as base64 PNG
+```
+Notes: the quality model and the DR model may use different input sizes; both consume the *same* FOV crop (crop once, resize twice).
+Quality threshold, T and τ are loaded from `artifacts/`; if a file is missing the corresponding step reports `"unavailable"` instead of using a default.
 
-### 3.2 `POST /api/v1/referrals`
-- **Description:** Stores and retrieves an official clinical referral sheet for uncertain or ungradable patients.
+## 5. Persistence (SQLite by default)
+Tables: `patients(id, external_id, age, sex)`, `screenings(id, patient_id, eye, quality_status, predicted_stage, entropy_norm, action, model_provenance, created_at)`,
+`referrals(id, screening_id, reason, status, created_at)`. **No image bytes in the DB.** Heatmaps are returned inline and not stored by default.
+Create tables at startup (`Base.metadata.create_all`) so a fresh checkout works; no migrations in v1.
+(`lesion_annotations` and `model_checkpoints` tables from the old spec are dropped: annotations live in the IDRiD files, checkpoint info lives in the checkpoint meta.)
+
+## 6. Security / privacy (kept minimal and honest)
+Local-only by default (`127.0.0.1`), CORS limited to the Vite dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`), upload size limit, no auth in v1
+(state this in the README: not for networked clinical use). No telemetry, no external calls in the screening path.

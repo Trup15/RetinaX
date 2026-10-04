@@ -1,42 +1,54 @@
-# Project Memory & Architecture Decision Records (ADR) — RetinaX
+# Project Memory & Decision Records — RetinaX (improved)
 
-This document captures historical decisions, trade-offs, and critical context so that CLI models and developers do not re-litigate established decisions.
+Rule for this file: record **decisions and reasons**, never experimental outcomes that have not been measured.
+Measured outcomes live in `outputs/` and the paper, not here.
 
----
+## ADR-01 Dual-gated pipeline (kept)
+Quality gate (MobileNetV3-Small) → DR classifier (EfficientNet-B3) → uncertainty gate. Reason: grading ungradable images risks false reassurance;
+the blueprint's central framing is a trustworthy *pipeline*, not a bigger classifier.
 
-## 1. Architectural Decisions Log
+## ADR-02 Backbones (kept, claims softened)
+MobileNetV3-Small (small, fast) for quality; EfficientNet-B3 for grading (strong transfer-learning baseline, manageable cost, easy XAI hooks).
+Parameter counts / sizes are **measured** by `deploy.benchmark`, not asserted.
 
-### ADR-01: Selection of Dual-Gated Pipeline over Monolithic Classifier
-- **Context:** Standard DR architectures attempt to classify all images directly into 5 stages.
-- **Decision:** Split into an explicit **Quality Gate (MobileNetV3-Small)** and **DR Classifier (EfficientNet-B3)** followed by an **Uncertainty Gate**.
-- **Rationale:** Feeding ungradable blurry or cataract images into a disease classifier causes catastrophic false-negative errors (diagnosing severe retinopathy as "Normal" because vessels cannot be seen). Rejecting ungradables first protects patient safety.
+## ADR-03 Calibration (changed)
+Single-scalar temperature scaling, fitted by NLL on the APTOS validation fold of the primary model, stored in `artifacts/calibration.json`.
+*Old text claimed T = 1.38 and specific ECE reductions before any model existed — removed.* The value of T is an output of fitting.
 
-### ADR-02: Backbone Model Choices (MobileNetV3-Small & EfficientNet-B3)
-- **Quality Gate:** MobileNetV3-Small ($\approx 2.54\text{ M}$ parameters, $2.6\text{ MB}$ INT8). Highly sensitive to optical high-frequency blur while adding under $9\text{ ms}$ CPU overhead.
-- **DR Classifier:** EfficientNet-B3 ($\approx 12.23\text{ M}$ parameters, $12.4\text{ MB}$ INT8). Optimal resolution ($300\text{--}512\text{ px}$) to resolve microaneurysms ($< 50\,\mu\text{m}$) without the computational bloat of EfficientNet-B7 or ViT.
+## ADR-04 XAI benchmark (changed)
+Grad-CAM++ is the **default display** method for speed only. Which method best matches lesions is a research question answered by
+`run_lesion_validation`. *Old text declared a ranking and Dice values before running anything — removed.* Expect coarse CAM resolution (stride 32) to limit small-lesion overlap; baselines (random/centre/inverted-green) give the context.
 
-### ADR-03: Confidence Calibration via Temperature Scaling ($T = 1.38$)
-- **Context:** Modern neural networks are miscalibrated and produce unreliably high softmax probabilities.
-- **Decision:** Optimize a single temperature scalar $T$ on the validation set using negative log-likelihood loss with L-BFGS.
-- **Result:** $T = 1.38$ reduced Expected Calibration Error (ECE) from $8.9\%$ to $3.8\%$ on APTOS, and from $14.2\%$ to $6.4\%$ on the external IDRiD dataset. Temperature scaling preserves class ranking (argmax unchanged) while generating trustworthy predictive entropy.
+## ADR-05 Client-side fallback (changed)
+Frontend fallback is a **quality-only** edge mode (Laplacian variance, illumination). It never shows a grade, heatmap, or lesion metric. *Old fallback simulated staging and Dice in the browser, which could be mistaken for model output.*
 
-### ADR-04: Saliency Method Benchmark on IDRiD
-- **Context:** Grad-CAM is often criticized as visual pseudoscience in medical imaging.
-- **Findings:** Testing on IDRiD expert lesion masks revealed:
-  - **Grad-CAM++** scored highest ($0.534$ Dice, $0.364$ IoU, $86\%$ Pointing Game accuracy).
-  - **Score-CAM** scored second ($0.472$ Dice); produces smoother heatmaps but bleeds onto healthy retina.
-  - **Integrated Gradients** scored lowest ($0.395$ Dice) due to pixel-level baseline scatter.
-- **Decision:** Set Grad-CAM++ as the default clinical explanation layer.
+## ADR-06 Library-first architecture (new)
+All ML logic in package `retinax`; CLI scripts and FastAPI are thin wrappers. Reason: one preprocessing/loading/calibration implementation for training, evaluation, XAI and API.
 
-### ADR-05: Client-Side Fallback Engine (`imageAnalyzer.ts`)
-- **Context:** The frontend is frequently demonstrated in web environments before the Python backend is running.
-- **Decision:** Built a complete client-side canvas pixel analyzer that computes real Laplacian variance ($\sigma^2_{\nabla^2}$), illumination uniformity, and real pixel-grid Dice/IoU set operations. The frontend automatically switches to the Python backend when detected at `http://localhost:8000`.
+## ADR-07 Canonical metadata CSVs (new)
+Pipelines read CSVs, not raw dataset folders. Reason: Kaggle mirrors vary; synthetic smoke data can emit identical CSVs; paths stay out of code.
 
----
+## ADR-08 DDR dual role (new, resolves a contradiction)
+DDR train/valid → quality model only. DDR test → external evaluation. DDR never trains/calibrates/thresholds the DR classifier. (Old rules said "DDR never used for training" while also training the quality model on it.)
 
-## 2. Key Nomenclature & Constants
-- **Project Name:** `RetinaX`
-- **Temperature Constant:** $T = 1.38$
-- **Entropy Referral Cutoff:** $\tau_{\text{entropy}} = 0.85\text{ bits}$
-- **Laplacian Blur Threshold:** $\sigma^2 < 18.0$ (values below 18 are flagged as ungradable blur)
-- **Standard Image Dimensions:** $500 \times 500$ viewport, $512 \times 512$ model input tensor
+## ADR-09 Lesion overlap only with ground truth (new)
+Overlap metrics need a lesion mask. They are computed for IDRiD segmentation-subset images and never returned for arbitrary uploads. (Old `/screen` returned constant Dice/IoU for any image.)
+
+## ADR-10 Preprocess once, cache (new)
+Deterministic FOV-crop + square-pad + resize cached as PNG per (size, CLAHE). Masks are transformed with the stored crop parameters; heatmaps stay in model space.
+
+## ADR-11 No heuristic DR staging (new)
+A pixel-count rule produced "Stage 4" for every synthetic image (including the Normal one). Without a model the API returns `MODEL_NOT_LOADED`; with the smoke model it is labelled `synthetic_smoke`.
+
+## ADR-12 Plain numpy/OpenCV augmentation (new)
+Avoids albumentations API changes between 1.x and 2.x. Behaviour is specified in `reference/augment.py`.
+
+## ADR-13 Primary model declared in advance (new)
+`primary_fold` is fixed in config before external evaluation; other folds give mean ± SD and an optional ensemble. Prevents picking the fold that looks best on IDRiD/DDR.
+
+## Key constants (configuration, not facts)
+Image sizes: DR 384 (512 for final), quality 320, smoke 160. Referral target rate 0.15 (pre-declared, editable). Quality target sensitivity 0.95. XAI thresholds/fractions in `configs/default.yaml`.
+There are deliberately **no** constants for T, τ, blur threshold or Dice: they come from fitted files.
+
+## Deviations log (agent appends here)
+- (empty)

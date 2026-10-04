@@ -1,4 +1,4 @@
-# Design Constitution & UI/UX Style Guide — RetinaX
+# Design Constitution & UI/UX Style Guide — RetinaX (improved: visual system unchanged; states and data sources corrected)
 
 ## 1. Design Philosophy
 RetinaX adheres to the **Science & Biotech High-Precision Design Constitution**:
@@ -54,3 +54,13 @@ RetinaX adheres to the **Science & Biotech High-Precision Design Constitution**:
   - Card 3: Action & Specialist Referral (Confident Routine Care vs High Uncertainty Referral Slip).
   - Card 4 (Optional): Doctor Lesion Match (% Overlap, IoU, Pointing Game).
   - Expandable Panel: Measured Image Features & Mathematical Constants.
+
+---
+
+## 5. Additions (needed for the corrected behaviour; no visual-system change)
+- **Status banner** (above the viewport, `bg-rose-50 border-rose-200 text-rose-800`): shown when `model_provenance == "synthetic_smoke"` ("Demo model - not for clinical use"), when `clinical_action == "MODEL_NOT_LOADED"` ("Grading model not loaded - quality check only"), and in offline mode ("Operating in Client-Side Edge Mode - quality check only").
+- **Result states for Card 2/3:** `ACCEPT_GRADE` (emerald), `SPECIALIST_REFERRAL` (amber, shows `reason`: high uncertainty / no calibration), `RECAPTURE_IMAGE` (rose), `MODEL_NOT_LOADED` (slate). Show only **calibrated** probabilities, labelled "calibrated".
+- **Quality card** shows the gate decision plus the measured hints (sharpness, illumination, FOV coverage) as plain numbers, never as a diagnosed cause.
+- **Doctor's Lesions / Compare Both** layers appear only for IDRiD sample images that have masks (from `/cohorts/idrid`). For uploaded images the layer switcher shows `Normal Photo` and `AI Highlights` only.
+- **Safety & Real-World Tests view** renders `GET /api/v1/results`; every number comes from the response. Empty state: "No experiment results yet".
+- **Dev setup:** Vite dev server on `http://localhost:5173`; API base URL from `VITE_API_URL` (default `http://localhost:8000`).
