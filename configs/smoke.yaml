@@ -1,0 +1,17 @@
+_extends: "default.yaml"
+
+dr:
+  img_size: 160
+  pretrained: false
+  epochs: 2
+  batch_size: 8
+
+quality:
+  img_size: 160
+  pretrained: false
+  epochs: 2
+  batch_size: 8
+
+data:
+  data_root: "./smoke_data"
+  smoke_root: "./smoke_data"

@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retinax"
+version = "0.1.0"
+description = "Trustworthy Diabetic Retinopathy Screening Research System"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.6,<3",
+    "sqlalchemy>=2.0",
+    "httpx>=0.27",
+    "pytest>=8",
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "timm>=1.0,<2",
+    "grad-cam>=1.5",
+    "captum>=0.7",
+    "opencv-python-headless>=4.9",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+    "pillow>=10",
+    "pyyaml>=6",
+    "psutil>=5.9",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+xai = [
+    "grad-cam>=1.5",
+    "captum>=0.7",
+]
+deploy = [
+    "onnx>=1.15",
+    "onnxruntime>=1.17",
+]
+
+[project.scripts]
+retinax-build-splits = "retinax.data.build_splits:main"
+retinax-build-cache = "retinax.data.build_cache:main"
+retinax-train-dr = "retinax.train.train_dr:main"
+retinax-train-quality = "retinax.train.train_quality:main"
+retinax-evaluate-dr = "retinax.eval.evaluate_dr:main"
+retinax-calibrate = "retinax.uncertainty.calibrate:main"
+retinax-analyze-uncertainty = "retinax.uncertainty.analyze:main"
+retinax-run-lesion-validation = "retinax.xai.run_lesion_validation:main"
+retinax-benchmark = "retinax.deploy.benchmark:main"
+retinax-pipeline = "retinax.pipeline:main"
+retinax-results-summary = "retinax.results_summary:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["retinax*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

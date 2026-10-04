@@ -1,8 +1,47 @@
-node_modules/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Distribution / packaging
 build/
 dist/
-coverage/
+*.egg-info/
+pip-wheel-metadata/
+
+# Data directories (large, regenerated)
+data/
+smoke_data/
+cache/
+outputs/
+artifacts/*.pt
+*.db
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
 *.log
-.env*
-!.env.example
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
