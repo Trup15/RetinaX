@@ -31,6 +31,7 @@ export interface BackendScreeningResponse {
   explainability: {
     method: 'GRAD_CAM_PP' | 'SCORE_CAM' | 'INTEGRATED_GRADIENTS';
     heatmap_data_url?: string;
+    heatmap_base64?: string;
     lesion_overlap?: {
       dice: number;
       iou: number;

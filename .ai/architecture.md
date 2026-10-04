@@ -170,6 +170,7 @@ retinax-root/
   },
   "explainability": {
     "method": "GRAD_CAM_PP",
+    "heatmap_data_url": "data:image/png;base64,iVBORw0KGgo...",
     "heatmap_base64": "data:image/png;base64,iVBORw0KGgo...",
     "lesion_overlap": {
       "dice": 0.542,

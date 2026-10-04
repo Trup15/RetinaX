@@ -1,115 +1,101 @@
-# Data Specification & Acquisition Guide — RetinaX
+# Data Specification & Local Test Generation — RetinaX
 
-This document provides the exact attributes, schemas, folder structures, and download commands required for the RetinaX project to operate with real medical data.
+This document provides both the **official dataset acquisition steps** and a **zero-dependency test data generator** so you can develop and test the entire backend immediately without downloading multi-gigabyte datasets.
 
 ---
 
-## 1. The Three Benchmark Datasets
+## 1. Quick Start: Zero-Download Synthetic Test Data Generator
+Run this script to immediately create a realistic local test dataset in `datasets/test_cohort/` (takes 2 seconds, no Kaggle account needed):
+
+```python
+# Save as: scripts/generate_test_cohort.py
+import os
+import cv2
+import numpy as np
+
+def generate_synthetic_fundus(filename, dr_stage=0, is_blurry=False):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    img = np.zeros((512, 512, 3), dtype=np.uint8)
+    
+    # Background orange-red retina
+    cv2.circle(img, (256, 256), 220, (15, 45, 180), -1)
+    
+    # Optic disc (yellowish)
+    cv2.circle(img, (160, 260), 28, (20, 160, 240), -1)
+    
+    # Macula (darker red)
+    cv2.circle(img, (310, 260), 30, (8, 20, 100), -1)
+    
+    # Blood vessels
+    cv2.line(img, (160, 260), (340, 120), (5, 10, 80), 3)
+    cv2.line(img, (160, 260), (340, 400), (5, 10, 80), 3)
+    
+    # Inject lesions according to DR stage
+    if dr_stage >= 1: # Microaneurysms
+        for _ in range(8):
+            rx, ry = np.random.randint(200, 360), np.random.randint(180, 340)
+            cv2.circle(img, (rx, ry), 2, (0, 0, 140), -1)
+            
+    if dr_stage >= 2: # Hard Exudates (yellow spots)
+        for _ in range(12):
+            ex, ey = np.random.randint(220, 380), np.random.randint(200, 320)
+            cv2.circle(img, (ex, ey), 3, (120, 230, 250), -1)
+            
+    if dr_stage >= 3: # Blot Hemorrhages
+        for _ in range(6):
+            hx, hy = np.random.randint(180, 380), np.random.randint(160, 360)
+            cv2.circle(img, (hx, hy), 7, (0, 0, 160), -1)
+
+    if is_blurry:
+        img = cv2.GaussianBlur(img, (31, 31), 15)
+
+    cv2.imwrite(filename, img)
+
+if __name__ == "__main__":
+    generate_synthetic_fundus("datasets/test_cohort/normal_eye.jpg", dr_stage=0)
+    generate_synthetic_fundus("datasets/test_cohort/mild_dr.jpg", dr_stage=1)
+    generate_synthetic_fundus("datasets/test_cohort/moderate_dr.jpg", dr_stage=2)
+    generate_synthetic_fundus("datasets/test_cohort/severe_dr.jpg", dr_stage=3)
+    generate_synthetic_fundus("datasets/test_cohort/blurry_ungradable.jpg", dr_stage=2, is_blurry=True)
+    print("Generated 5 realistic test images in datasets/test_cohort/")
+```
+
+Run it via:
+```bash
+python scripts/generate_test_cohort.py
+```
+
+---
+
+## 2. Official Production Datasets (Kaggle & IEEE)
 
 ### Dataset 1: APTOS 2019 Blindness Detection
-- **Source:** Aravind Eye Hospital, Tamil Nadu, India.
-- **Role in RetinaX:** Primary training, internal validation, and temperature scaling ($T = 1.38$) calibration.
-- **Size:** $3,662$ training images with verified specialist labels; $1,928$ unlabelled test images.
+- **Role:** Primary training & temperature scaling calibration ($T = 1.38$).
+- **Size:** $3,662$ labeled train images, $1,928$ test images.
 - **Attributes in `train.csv`:**
-  | Column Name | Type | Allowed Values | Description |
-  |---|---|---|---|
-  | `id_code` | `string` | e.g. `000c1434d8d7` | Unique image filename (without `.png` extension) |
-  | `diagnosis` | `integer` | `0, 1, 2, 3, 4` | Ordinal clinical DR stage according to ICDR scale |
-
-- **Class Distribution:**
-  - `0` (No DR): $1,805$ samples ($49.3\%$)
-  - `1` (Mild NPDR): $370$ samples ($10.1\%$)
-  - `2` (Moderate NPDR): $999$ samples ($27.3\%$)
-  - `3` (Severe NPDR): $193$ samples ($5.3\%$)
-  - `4` (Proliferative DR): $295$ samples ($8.1\%$)
-
-- **How to Get It:**
+  - `id_code`: Image filename without extension (e.g. `000c1434d8d7`).
+  - `diagnosis`: Integer DR grade ($0$: Normal, $1$: Mild, $2$: Moderate, $3$: Severe, $4$: Proliferative).
+- **Download Command:**
   ```bash
-  # Using Kaggle CLI (requires kaggle.json in ~/.kaggle/)
   kaggle competitions download -c aptos2019-blindness-detection
   unzip aptos2019-blindness-detection.zip -d datasets/aptos2019/
   ```
 
----
-
 ### Dataset 2: IDRiD (Indian Diabetic Retinopathy Image Dataset)
-- **Source:** Eye Clinic in Nanded, Maharashtra, India (Kowa VX-10alpha digital camera, $50^\circ$ FOV).
-- **Role in RetinaX:** External Indian generalization validation + Quantitative pixel-level lesion validation (Objective 4).
-- **Size:** $516$ fundus images ($4288 \times 2848$ resolution).
-- **Sub-datasets & Attributes:**
-  1. **Disease Grading (`IDRiD_Disease_Grading.csv`):**
-     | Column Name | Type | Allowed Values | Description |
-     |---|---|---|---|
-     | `Image name` | `string` | e.g. `IDRiD_042.jpg` | Image filename |
-     | `Retinopathy grade` | `integer` | `0, 1, 2, 3, 4` | Ground-truth DR grade |
-     | `Risk of macular edema` | `integer` | `0, 1, 2` | Diabetic Macular Edema (DME) risk |
-  2. **Pixel-Level Lesion Ground Truth Masks (`.tif` binary images):**
-     - `1. Microaneurysms/`: Binary masks with value `255` at capillary outpouchings.
-     - `2. Haemorrhages/`: Binary masks of blot and flame intraretinal bleeding.
-     - `3. Hard Exudates/`: Binary masks of yellowish waxy protein/lipid deposits.
-     - `4. Soft Exudates/`: Binary masks of cotton wool nerve fiber ischemic patches.
-
-- **How to Get It:**
-  - Official IEEE Dataport: [https://ieee-dataport.org/open-access/indian-diabetic-retinopathy-image-dataset-idrid](https://ieee-dataport.org/open-access/indian-diabetic-retinopathy-image-dataset-idrid) (DOI: `10.21227/H25W98`).
-  - Or via Kaggle:
-    ```bash
-    kaggle datasets download -d mariaherrerot/idrid-dataset
-    unzip idrid-dataset.zip -d datasets/idrid/
-    ```
-
----
+- **Role:** External Indian generalization validation + Ground-truth lesion segmentation (Objective 4).
+- **Size:** $516$ fundus photographs with pixel-level lesion binary `.tif` masks.
+- **Sub-folders:**
+  - `1_microaneurysms/`: Microaneurysm binary masks.
+  - `2_haemorrhages/`: Intraretinal hemorrhage binary masks.
+  - `3_hard_exudates/`: Hard exudate binary masks.
+  - `4_soft_exudates/`: Cotton wool spot binary masks.
+- **Download:** [IEEE Dataport (DOI: 10.21227/H25W98)](https://ieee-dataport.org/open-access/indian-diabetic-retinopathy-image-dataset-idrid) or:
+  ```bash
+  kaggle datasets download -d mariaherrerot/idrid-dataset
+  unzip idrid-dataset.zip -d datasets/idrid/
+  ```
 
 ### Dataset 3: DDR (Diabetic Retinopathy Dataset)
-- **Source:** Multi-center cohort across 147 hospitals in China.
-- **Role in RetinaX:** Training the MobileNetV3-Small quality gate + Stress-testing broad cross-dataset domain shift.
-- **Size:** $13,673$ fundus images.
-- **Attributes in `dr_labels.txt`:**
-  | Column Name | Type | Allowed Values | Description |
-  |---|---|---|---|
-  | `image_name` | `string` | e.g. `007-0001-000.jpg` | Image filename |
-  | `label` | `integer` | `0, 1, 2, 3, 4, 5` | `0-4`: DR severity; `5`: **Ungradable** (severe blur, media opacity, poor lighting) |
-
-- **Why It Is Required:** The `label = 5` ungradable subset ($1,150$ images) provides the positive training samples for the `MobileNetV3-Small` Quality Gate to learn optical blur and cataract rejection.
-
----
-
-## 2. Directory Layout Expected by the Backend
-
-```
-datasets/
-+-- aptos2019/
-|   +-- train_images/          # 3662 .png files
-|   +-- train.csv
-+-- idrid/
-|   +-- original_images/       # 516 .jpg files
-|   +-- ground_truth/
-|   |   +-- disease_grading.csv
-|   |   +-- 1_microaneurysms/  # .tif masks
-|   |   +-- 2_haemorrhages/    # .tif masks
-|   |   +-- 3_hard_exudates/   # .tif masks
-|   |   +-- 4_soft_exudates/   # .tif masks
-+-- ddr/
-|   +-- images/                # 13673 .jpg files
-|   +-- annotations/
-|       +-- train.txt
-|       +-- valid.txt
-|       +-- test.txt
-```
-
----
-
-## 3. Data Preprocessing Pipeline Contract
-
-Before being passed to PyTorch models, all fundus images must undergo:
-1. **Circular FOV Masking:** Identify pupil radius $R$ and center $(c_x, c_y)$. Crop tight bounding box $[c_x - R, c_y - R, 2R, 2R]$ removing black borders.
-2. **Resizing:** Standardized bilinear interpolation to $512 \times 512 \times 3$.
-3. **Color Normalization:**
-   ```python
-   mean = [0.485, 0.456, 0.406]
-   std  = [0.229, 0.224, 0.225]
-   ```
-4. **Data Augmentation (Training Only via Albumentations):**
-   - Horizontal & Vertical Flips ($p = 0.5$)
-   - Random Affine Rotation ($\pm 180^\circ$)
-   - Color Jitter (Brightness $\pm 0.1$, Contrast $\pm 0.1$)
-   - CLAHE (Contrast Limited Adaptive Histogram Equalization, $p = 0.3$)
+- **Role:** Training the MobileNetV3-Small quality gate (label `5` = ungradable/blur/cataract).
+- **Size:** $13,673$ fundus images across 147 hospitals.
+- **Download:** Kaggle `ddr-dataset` or GitHub DDR benchmark repo.

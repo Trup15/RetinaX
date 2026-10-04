@@ -1,70 +1,66 @@
-# Implementation Roadmap & Task Breakdown — RetinaX
+# Implementation Roadmap & Verifiable Tasks — RetinaX
 
-This document breaks down the end-to-end implementation for CLI-based AI coding agents (Claude Code, Cursor, Aider, Copilot, etc.) into sequential, verifiable phases.
-
----
-
-## Phase 1: Environment & Backend Scaffolding
-- [ ] **Task 1.1:** Initialize the `backend/` directory with `pyproject.toml` or `requirements.txt` (`fastapi`, `uvicorn`, `torch`, `torchvision`, `timm`, `opencv-python-headless`, `albumentations`, `scipy`, `scikit-learn`, `sqlalchemy`, `pydantic`).
-- [ ] **Task 1.2:** Set up the FastAPI server with CORS middleware allowing `http://localhost:3000` (or Vite dev port) and healthcheck endpoint `GET /api/v1/health`.
-- [ ] **Task 1.3:** Configure SQLite local database using SQLAlchemy with tables: `patients`, `screenings`, `referrals`.
+Each task has an **Execution Command** and a **Verification Check** so the CLI AI agent can confirm success before moving to the next task.
 
 ---
 
-## Phase 2: Preprocessing & FOV Cropping Service
-- [ ] **Task 2.1:** Implement `backend/app/ml/preprocessing/fov_crop.py`:
-  - Detect circular pupil mask using Otsu thresholding / Hough circle transform.
-  - Crop black bounding borders while preserving retinal anatomy.
-  - Standardize all inputs to $512 \times 512$ resolution.
-- [ ] **Task 2.2:** Implement CLAHE contrast enhancement on the green channel using OpenCV (`cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))`).
+## Phase 1: Environment & Server Scaffolding
+- [ ] **Task 1.1: Virtualenv & Dependency Installation**
+  - *Action:* Create `backend/requirements.txt` from `.ai/backend_integration.md` and install packages.
+  - *Command:* `python -m venv venv && source venv/bin/activate && pip install -r requirements.txt`
+  - *Verification:* `python -c "import fastapi, torch, timm, cv2; print('Dependencies OK')"`
+- [ ] **Task 1.2: FastAPI Entrypoint & Health Route**
+  - *Action:* Create `backend/app/main.py` with `/api/v1/health`.
+  - *Command:* `python -m uvicorn app.main:app --port 8000 &`
+  - *Verification:* `curl -s http://localhost:8000/api/v1/health | grep '"status":"healthy"'`
 
 ---
 
-## Phase 3: Image Quality Gate Service (MobileNetV3-Small)
-- [ ] **Task 3.1:** Implement model definition in `backend/app/ml/models/mobilenet_quality.py` using `timm.create_model('mobilenetv3_small_100', pretrained=True, num_classes=2)`.
-- [ ] **Task 3.2:** Add inference wrapper that outputs `is_gradable: bool`, `gradable_probability: float`, and failure mode classification (`OPTICAL_BLUR`, `CATARACT_OPACITY`, `ILLUMINATION_FAULT`).
-- [ ] **Task 3.3:** Add unit tests verifying that blurred fundus images are correctly rejected.
+## Phase 2: Core Vision & Quality Gating
+- [ ] **Task 2.1: Circular FOV Cropping & Preprocessing**
+  - *Action:* Implement `crop_circular_fov(img)` using Otsu thresholding in OpenCV.
+  - *Verification:* Pass a test black-bordered fundus image and assert output shape is `(512, 512, 3)` with $>90\%$ of black margin removed.
+- [ ] **Task 2.2: Optical Blur (Laplacian Variance) Check**
+  - *Action:* Implement `compute_optical_sharpness(img)`.
+  - *Verification:* Assert that Gaussian-blurred test image yields variance $< 15.0$ and triggers `UNGRADABLE` status.
 
 ---
 
-## Phase 4: DR 5-Stage Classifier Service (EfficientNet-B3)
-- [ ] **Task 4.1:** Implement model definition in `backend/app/ml/models/efficientnet_dr.py` using `timm.create_model('efficientnet_b3', pretrained=True, num_classes=5)`.
-- [ ] **Task 4.2:** Implement forward pass producing raw unnormalized logits `[z_0, z_1, z_2, z_3, z_4]` and standard softmax distribution.
-- [ ] **Task 4.3:** Implement training / fine-tuning script on APTOS 2019 using Cross-Entropy Loss with Label Smoothing ($0.1$) and Stratified 5-Fold Cross-Validation.
+## Phase 3: 5-Stage Classification & Temperature Calibration
+- [ ] **Task 3.1: Logits & Softmax Formulation**
+  - *Action:* Implement 5-class forward pass with classes 0 (No DR) to 4 (PDR).
+  - *Verification:* Ensure sum of probabilities $\sum p_i = 1.0 \pm 10^{-6}$.
+- [ ] **Task 3.2: Temperature Scaler ($T = 1.38$) & Shannon Entropy**
+  - *Action:* Implement scalar division $z_i / T$ and $H(p) = -\sum p_i \log_2(p_i)$.
+  - *Verification:* Test boundary logits `[1.0, 3.2, 3.1, 0.5, -1.0]` and confirm $H(p) > 0.85\text{ b}$, correctly triggering `SPECIALIST_REFERRAL`.
 
 ---
 
-## Phase 5: Confidence Calibration & Uncertainty Referral
-- [ ] **Task 5.1:** Implement `backend/app/ml/calibration/temperature_scaling.py`:
-  - Optimization function using L-BFGS to find optimal scalar $T$ on validation logits ($T = 1.38$).
-  - Softmax calculation with scaled logits: $p_i = \frac{e^{z_i/T}}{\sum e^{z_j/T}}$.
-  - Expected Calibration Error (ECE) metric calculator with 10 reliability bins.
-- [ ] **Task 5.2:** Implement Shannon Predictive Entropy calculation: $H(p) = -\sum_{i=0}^4 p_i \log_2(p_i)$.
-- [ ] **Task 5.3:** Implement Monte Carlo Dropout sampler ($N = 30$ forward passes with `model.train()` mode enabled for dropout layers).
-- [ ] **Task 5.4:** Implement triage logic: If $H(p) > 0.85\text{ b}$, return `SPECIALIST_REFERRAL` status.
+## Phase 4: Full Pipeline REST Endpoint
+- [ ] **Task 4.1: Endpoint `POST /api/v1/screen`**
+  - *Action:* Accept multipart form data with image file, eye (`OD`/`OS`), and `xai_method`.
+  - *Verification Command:*
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/screen" \
+      -F "file=@sample_eye.jpg" \
+      -F "eye=OD" \
+      -F "xai_method=GRAD_CAM_PP"
+    ```
+  - *Expected JSON keys:* `quality`, `classification`, `uncertainty`, `explainability`.
 
 ---
 
-## Phase 6: Explainable AI & Lesion Grounding Engine
-- [ ] **Task 6.1:** Implement **Grad-CAM++** in `backend/app/ml/xai/gradcam_pp.py`:
-  - Hook into the final convolutional feature layer of EfficientNet-B3 (`conv_head`).
-  - Calculate positive partial gradient weights and generate 2D attribution heatmap.
-- [ ] **Task 6.2:** Implement **Score-CAM** and **Integrated Gradients** for comparative benchmarks.
-- [ ] **Task 6.3:** Implement quantitative lesion evaluation against IDRiD pixel masks in `backend/app/ml/evaluation/lesion_metrics.py`:
-  - Compute discrete set Intersection over Union (IoU) and Dice Similarity Coefficient.
-  - Implement Pointing-Game localization check ($\arg\max XAI \in \text{Lesion}$).
+## Phase 5: Quantitative Lesion Overlap (IDRiD Evaluation)
+- [ ] **Task 5.1: Discrete Grid Dice & IoU Calculator**
+  - *Action:* Implement pixel set intersection and union on $100 \times 100$ activation matrices.
+  - *Verification:* Check mathematical identity: $\text{IoU} = \frac{\text{Dice}}{2 - \text{Dice}}$.
 
 ---
 
-## Phase 7: REST API Endpoints & Persistence
-- [ ] **Task 7.1:** Implement `POST /api/v1/screen` endpoint orchestrating:
-  1. FOV crop $\to$ 2. Quality Gate $\to$ 3. (If gradable) DR Classifier $\to$ 4. Temperature Scaling $\to$ 5. Grad-CAM++ generation $\to$ 6. Return unified JSON.
-- [ ] **Task 7.2:** Implement `GET /api/v1/screenings/{id}` and `POST /api/v1/referrals` to persist patient referral documents.
-- [ ] **Task 7.3:** Implement `GET /api/v1/benchmarks` returning cross-dataset metrics (APTOS, IDRiD, DDR).
-
----
-
-## Phase 8: Frontend-Backend Integration
-- [ ] **Task 8.1:** Create `frontend/src/utils/apiClient.ts` with Axios/Fetch functions to call `POST /api/v1/screen`.
-- [ ] **Task 8.2:** Update `SimpleScreener.tsx` to call the live FastAPI backend when an image is selected/uploaded, with automatic fallback to client-side canvas analysis if server is unreachable.
-- [ ] **Task 8.3:** Connect the "Download / Print Doctor Referral Slip" button to save referral records to the backend database.
+## Phase 6: Frontend Bridge & End-to-End Verification
+- [ ] **Task 6.1: Connect `src/utils/apiClient.ts`**
+  - *Action:* Ensure frontend calls `http://localhost:8000/api/v1/screen` when user uploads or selects an image.
+  - *Verification:* In browser DevTools Network tab, observe successful `200 OK` response from `localhost:8000`.
+- [ ] **Task 6.2: Offline / Fallback Integrity Test**
+  - *Action:* Terminate the Python server (`kill %1`) and refresh the frontend.
+  - *Verification:* Confirm the frontend seamlessly continues working using the internal `src/utils/imageAnalyzer.ts` without white-screening or crashing.

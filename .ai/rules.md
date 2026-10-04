@@ -1,18 +1,23 @@
 # AI Engineer & Developer Rulebook — RetinaX
 
 ## 1. Core Engineering Principles
-1. **Never Assume Cloud Connectivity:** All backend code must run completely offline without calling external inference APIs (no OpenAI, no Anthropic, no cloud endpoints in the core screening path). The model weights must load locally via PyTorch / TorchScript / ONNX.
-2. **Clinical Safety Above Vanity Metrics:** A high top-line accuracy that masks ungradable images is a critical failure. Rejecting ungradable photographs is a primary safety feature, not a bug.
-3. **No Uncalibrated Softmax Probabilities:** Raw neural network softmax values must never be reported to doctors as "confidence". Always run Temperature Scaling ($T = 1.38$) and report Predictive Entropy $H(p)$.
+1. **Never Crash on Missing Weights (Cold-Start Protocol):**
+   - If trained PyTorch weights (`.pth`) are not yet present in `models_weights/`, the backend **must not crash or exit**.
+   - It must automatically initialize the PyTorch models with standard ImageNet weights or execute the algorithmic fallback mode (OpenCV Laplacian blur detection + green-channel vessel contrast) and log: `[WARN] Operating in baseline computer-vision mode until fine-tuned weights are present.`
+2. **Never Assume Cloud Connectivity:**
+   - All backend code must run completely offline without calling external inference APIs (no OpenAI, no Anthropic, no cloud endpoints in the core screening path).
+3. **No Uncalibrated Softmax Probabilities:**
+   - Raw neural network softmax values must never be reported to doctors as "confidence". Always run Temperature Scaling ($T = 1.38$) and report Predictive Entropy $H(p)$.
 4. **Data Isolation (Zero Leakage):**
    - Training: Exclusively on **APTOS 2019** (5-fold stratified cross-validation).
    - Validation Tuning: Temperature scaling $T$ is tuned on the APTOS validation fold.
    - **IDRiD** and **DDR** are external test sets and must NEVER be used for training, learning rate adjustment, or temperature fitting.
-5. **Ordinal Severity Metrics:** DR severity is ordinal (0 to 4). Always report Quadratic Weighted Kappa (QWK) alongside Macro F1 and Accuracy.
+5. **Ordinal Severity Metrics:**
+   - DR severity is ordinal (0 to 4). Always report Quadratic Weighted Kappa (QWK) alongside Macro F1 and Accuracy.
 
 ---
 
-## 2. Python & Backend Rules
+## 2. Python & Backend Standards
 - **Python Version:** 3.10 or 3.11 with strict type annotations (`typing.List`, `typing.Optional`, `Annotated`).
 - **Framework:** FastAPI with `async def` endpoints. Use Pydantic v2 for data validation (`from pydantic import BaseModel, Field`).
 - **Computer Vision & ML Libraries:**
@@ -34,8 +39,8 @@
 
 ---
 
-## 3. Frontend & TypeScript Rules
-- **No Mock Fallback Regressions:** If the Python backend server is offline or unreachable, the frontend must smoothly fall back to the built-in client-side canvas image analyzer (`src/utils/imageAnalyzer.ts`) with a clear banner: *"Operating in Client-Side Edge Mode"*.
+## 3. Frontend & TypeScript Standards
+- **No Mock Fallback Regressions:** If the Python backend server is offline or unreachable, the frontend must smoothly fall back to the built-in client-side canvas image analyzer (`src/utils/imageAnalyzer.ts`) with a clear indicator: *"Operating in Client-Side Edge Mode"*.
 - **Strict Single-Line Top Bar Contract:** Exactly 3 zones (Wordmark `RetinaX` | 3 nav links | 1 primary action button).
 - **Design Constitution:**
   - Maintain the clean, clinical light theme (`bg-slate-50`, `bg-white`, `border-slate-200`).
