@@ -1,0 +1,6 @@
+{
+  "name": "RetinaTrust AI",
+  "description": "Explainable and uncertainty-aware deep learning framework for diabetic retinopathy screening with lesion-validated XAI and selective specialist referral.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
