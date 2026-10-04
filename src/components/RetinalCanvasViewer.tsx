@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { FundusCase, XAIMethod } from '../types/pipeline';
-import { Eye, Layers, Sliders, Crosshair, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Eye, Crosshair, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface RetinalCanvasViewerProps {
   fundusCase: FundusCase;
@@ -32,16 +32,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
   const [cursorActivation, setCursorActivation] = useState<number | null>(null);
   const [cursorLesionType, setCursorLesionType] = useState<string | null>(null);
 
-  // Colormap function for Jet (Scientific pseudo-color)
-  const getJetColor = (val: number, alpha: number) => {
-    // val in [0, 1]
-    const clamped = Math.max(0, Math.min(1, val));
-    const r = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(clamped * 4 - 3)))));
-    const g = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(clamped * 4 - 2)))));
-    const b = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(clamped * 4 - 1)))));
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -53,7 +43,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
     canvas.width = width;
     canvas.height = height;
 
-    // 1. Draw base fundus image or synthetic high-fidelity fundus canvas
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = fundusCase.imageUrl;
@@ -61,12 +50,11 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Draw background
+      // Dark background for ophthalmic fundus field
       ctx.fillStyle = '#05070B';
       ctx.fillRect(0, 0, width, height);
 
       if (img.complete && img.naturalWidth > 0) {
-        // Draw the image centered
         ctx.drawImage(img, 0, 0, width, height);
       } else {
         // Fallback procedural fundus illustration
@@ -74,7 +62,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         const centerY = height / 2;
         const radius = width * 0.44;
 
-        // Retina background glow
         const grad = ctx.createRadialGradient(centerX, centerY, 20, centerX, centerY, radius);
         grad.addColorStop(0, '#B84518');
         grad.addColorStop(0.7, '#80260B');
@@ -96,7 +83,7 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         ctx.arc(discX, discY, 26, 0, Math.PI * 2);
         ctx.fill();
 
-        // Retinal Blood Vessels (Arcades)
+        // Retinal Blood Vessels
         ctx.strokeStyle = '#450A0A';
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
@@ -122,16 +109,14 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         ctx.fill();
       }
 
-      // 2. Apply CLAHE Simulation (Green Channel Contrast Enhancement)
+      // CLAHE Simulation
       if (applyCLAHE) {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
         for (let i = 0; i < data.length; i += 4) {
-          // Boost green channel contrast and reduce red dominance
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
-          // Local contrast stretch
           const enhancedG = Math.min(255, Math.pow(g / 255, 0.75) * 270);
           data[i] = r * 0.9;
           data[i + 1] = enhancedG;
@@ -140,7 +125,7 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         ctx.putImageData(imgData, 0, 0);
       }
 
-      // 3. Render Field of View (FOV) Circular Crop
+      // Circular FOV Mask
       if (showFOVMask) {
         ctx.save();
         ctx.globalCompositeOperation = 'destination-in';
@@ -149,7 +134,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         ctx.fill();
         ctx.restore();
 
-        // Subtle circular boundary guide
         ctx.strokeStyle = 'rgba(6, 182, 212, 0.35)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -157,7 +141,7 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         ctx.stroke();
       }
 
-      // 4. Render XAI Heatmap Layer
+      // XAI Heatmap Layer
       if (showXAI && fundusCase.qualityGroundTruth === 'GRADABLE') {
         const heatmapCanvas = document.createElement('canvas');
         heatmapCanvas.width = width;
@@ -165,7 +149,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         const hCtx = heatmapCanvas.getContext('2d');
 
         if (hCtx) {
-          // Determine hotspots based on lesions or disease stage
           const focalPoints: Array<{ x: number; y: number; r: number; weight: number }> = [];
 
           if (fundusCase.lesions && fundusCase.lesions.regions.length > 0) {
@@ -182,15 +165,12 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
               focalPoints.push({ x: r.x, y: r.y, r: rad, weight });
             });
           } else if (fundusCase.groundTruthStage === 0) {
-            // Healthy retina - very low diffuse activation around optic disc or vessels
             focalPoints.push({ x: width * 0.35, y: height * 0.52, r: 40, weight: 0.28 });
           } else {
-            // General lesions for cases without explicit masks
             focalPoints.push({ x: 260, y: 240, r: 50, weight: 0.85 });
             focalPoints.push({ x: 220, y: 280, r: 40, weight: 0.75 });
           }
 
-          // Render radial gaussian activations
           focalPoints.forEach((pt) => {
             const radGrad = hCtx.createRadialGradient(pt.x, pt.y, 2, pt.x, pt.y, pt.r);
             radGrad.addColorStop(0, `rgba(255, 255, 255, ${pt.weight})`);
@@ -202,24 +182,20 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
             hCtx.fill();
           });
 
-          // Apply colormap and thresholding to main context
           const hData = hCtx.getImageData(0, 0, width, height);
           const px = hData.data;
           const overlayImgData = ctx.getImageData(0, 0, width, height);
           const oPx = overlayImgData.data;
 
           for (let i = 0; i < px.length; i += 4) {
-            const intensity = px[i] / 255; // Normalized activation [0, 1]
+            const intensity = px[i] / 255;
             if (intensity >= saliencyThreshold) {
-              // Convert to Jet color
               const val = (intensity - saliencyThreshold) / (1 - saliencyThreshold);
-              // Red
               const r = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(val * 4 - 3)))));
               const g = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(val * 4 - 2)))));
               const b = Math.max(0, Math.min(255, Math.floor(255 * (1.5 - Math.abs(val * 4 - 1)))));
 
               const alpha = xaiOpacity * (0.4 + 0.6 * val);
-              // Alpha blend
               oPx[i] = Math.floor(oPx[i] * (1 - alpha) + r * alpha);
               oPx[i + 1] = Math.floor(oPx[i + 1] * (1 - alpha) + g * alpha);
               oPx[i + 2] = Math.floor(oPx[i + 2] * (1 - alpha) + b * alpha);
@@ -229,56 +205,48 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
         }
       }
 
-      // 5. Render Ground Truth Lesion Masks (IDRiD validated)
+      // Ground Truth Lesion Masks
       if (showLesionMasks && fundusCase.lesions && fundusCase.lesions.regions.length > 0) {
         fundusCase.lesions.regions.forEach((lesion) => {
           if (activeLesionFilter !== 'ALL' && lesion.type !== activeLesionFilter) {
             return;
           }
 
-          let color = '#F59E0B'; // EX (Yellow/Amber)
-          let label = 'EX';
+          let color = '#F59E0B';
           if (lesion.type === 'MA') {
-            color = '#EF4444'; // MA (Red)
-            label = 'MA';
+            color = '#EF4444';
           } else if (lesion.type === 'HE') {
-            color = '#DC2626'; // HE (Dark Red)
-            label = 'HE';
+            color = '#DC2626';
           } else if (lesion.type === 'SE') {
-            color = '#E2E8F0'; // SE (Cotton wool / White)
-            label = 'SE';
+            color = '#38BDF8';
           }
 
-          // Lesion polygon/circle
           ctx.strokeStyle = color;
-          ctx.lineWidth = 1.5;
-          ctx.fillStyle = `${color}40`; // 25% alpha fill
+          ctx.lineWidth = 2;
+          ctx.fillStyle = `${color}40`;
           ctx.beginPath();
           ctx.arc(lesion.x, lesion.y, lesion.radius, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
 
-          // Small lesion centroid marker
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(lesion.x, lesion.y, 1.5, 0, Math.PI * 2);
+          ctx.arc(lesion.x, lesion.y, 1.8, 0, Math.PI * 2);
           ctx.fill();
         });
       }
 
-      // 6. Crosshair and hover coordinates HUD
+      // Crosshairs
       if (hoverCoord) {
-        ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
 
-        // Horizontal line
         ctx.beginPath();
         ctx.moveTo(0, hoverCoord.y);
         ctx.lineTo(width, hoverCoord.y);
         ctx.stroke();
 
-        // Vertical line
         ctx.beginPath();
         ctx.moveTo(hoverCoord.x, 0);
         ctx.lineTo(hoverCoord.x, height);
@@ -315,7 +283,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
 
     setHoverCoord({ x, y });
 
-    // Check if near any lesion
     let hitLesion: string | null = null;
     if (fundusCase.lesions && fundusCase.lesions.regions) {
       for (const r of fundusCase.lesions.regions) {
@@ -328,7 +295,6 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
     }
     setCursorLesionType(hitLesion);
 
-    // Approximate activation at this coordinate
     if (fundusCase.lesions && fundusCase.lesions.regions) {
       let maxAct = 0.05;
       for (const r of fundusCase.lesions.regions) {
@@ -351,42 +317,41 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
   };
 
   return (
-    <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
       {/* Viewport Control Bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/80 border-b border-slate-800 text-xs">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-cyan-400 font-medium flex items-center gap-1.5">
-            <Eye className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="font-mono text-cyan-700 font-bold flex items-center gap-1.5">
+            <Eye className="w-3.5 h-3.5 text-cyan-600" />
             500×500 FOV VIEWPORT
           </span>
-          <span className="text-slate-500">|</span>
-          <span className="text-slate-400 font-mono">
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-600 font-mono">
             {fundusCase.dataset} · {fundusCase.caseNumber} ({fundusCase.eye})
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Zoom controls */}
           <button
             onClick={() => setZoom((z) => Math.min(2.0, z + 0.25))}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 transition-colors"
             title="Zoom In"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
-          <span className="font-mono text-slate-400 text-[11px] w-10 text-center">
+          <span className="font-mono text-slate-700 text-[11px] w-10 text-center font-semibold">
             {Math.round(zoom * 100)}%
           </span>
           <button
             onClick={() => setZoom((z) => Math.max(0.75, z - 0.25))}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 transition-colors"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setZoom(1.0)}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 transition-colors"
             title="Reset Zoom"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -414,53 +379,45 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
           />
         </div>
 
-        {/* HUD Crosshair Telemetry Floating Badge */}
+        {/* HUD Crosshair Floating Badge */}
         {hoverCoord && (
-          <div className="absolute bottom-3 left-3 bg-slate-950/90 backdrop-blur-md border border-slate-700/80 rounded-md px-2.5 py-1.5 text-[11px] font-mono shadow-lg text-slate-300 pointer-events-none flex items-center gap-3">
-            <span className="flex items-center gap-1 text-cyan-400">
-              <Crosshair className="w-3 h-3" />
+          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md border border-slate-200 rounded-md px-2.5 py-1.5 text-[11px] font-mono shadow-md text-slate-800 pointer-events-none flex items-center gap-3">
+            <span className="flex items-center gap-1 text-cyan-700 font-bold">
+              <Crosshair className="w-3 h-3 text-cyan-600" />
               X: {hoverCoord.x} Y: {hoverCoord.y}
             </span>
             <span>·</span>
             <span>
-              Act: <span className="text-amber-400">{cursorActivation ?? 0}</span>
+              Act: <span className="text-amber-700 font-bold">{cursorActivation ?? 0}</span>
             </span>
             {cursorLesionType && (
               <>
                 <span>·</span>
-                <span className="text-emerald-400 font-semibold">{cursorLesionType}</span>
+                <span className="text-emerald-700 font-bold">{cursorLesionType}</span>
               </>
             )}
           </div>
         )}
 
-        {/* Legend Overlay at Top Right */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-md p-2 text-[10px] font-mono text-slate-400 pointer-events-none">
-          <div className="text-slate-300 font-semibold mb-0.5">ACTIVE LAYERS</div>
+        {/* Active Layers Overlay Badge */}
+        <div className="absolute top-3 right-3 flex flex-col gap-1 bg-white/95 backdrop-blur-md border border-slate-200 rounded-md p-2 text-[10px] font-mono text-slate-700 shadow-md pointer-events-none">
+          <div className="text-slate-900 font-bold mb-0.5">ACTIVE LAYERS</div>
           <div className="flex items-center gap-1.5">
-            <span
-              className={`w-2 h-2 rounded-full ${showFOVMask ? 'bg-cyan-500' : 'bg-slate-600'}`}
-            />
+            <span className={`w-2 h-2 rounded-full ${showFOVMask ? 'bg-cyan-600' : 'bg-slate-300'}`} />
             <span>FOV Cropping</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span
-              className={`w-2 h-2 rounded-full ${applyCLAHE ? 'bg-emerald-500' : 'bg-slate-600'}`}
-            />
+            <span className={`w-2 h-2 rounded-full ${applyCLAHE ? 'bg-emerald-600' : 'bg-slate-300'}`} />
             <span>CLAHE Green Contrast</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${showXAI ? 'bg-amber-500' : 'bg-slate-600'}`} />
-            <span>
-              XAI: {xaiMethod === 'GRAD_CAM_PP' ? 'Grad-CAM++' : xaiMethod === 'SCORE_CAM' ? 'Score-CAM' : 'Integrated Grad'}
-            </span>
+            <span className={`w-2 h-2 rounded-full ${showXAI ? 'bg-amber-500' : 'bg-slate-300'}`} />
+            <span>XAI Heatmap (Grad-CAM++)</span>
           </div>
           {fundusCase.hasLesionMasks && (
             <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${showLesionMasks ? 'bg-rose-500' : 'bg-slate-600'}`}
-              />
-              <span>IDRiD Lesion GT ({activeLesionFilter})</span>
+              <span className={`w-2 h-2 rounded-full ${showLesionMasks ? 'bg-rose-500' : 'bg-slate-300'}`} />
+              <span>IDRiD Doctor Lesions</span>
             </div>
           )}
         </div>
@@ -468,8 +425,8 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
 
       {/* Colormap Gradient Bar */}
       {showXAI && (
-        <div className="px-4 py-2 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
-          <span className="text-slate-400">Saliency Activation:</span>
+        <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-600">
+          <span className="font-semibold text-slate-700">Saliency Activation:</span>
           <div className="flex items-center gap-2 flex-1 max-w-xs mx-4">
             <span className="text-[10px]">0.0</span>
             <div
@@ -480,7 +437,7 @@ export const RetinalCanvasViewer: React.FC<RetinalCanvasViewerProps> = ({
             />
             <span className="text-[10px]">1.0</span>
           </div>
-          <span>Threshold: {saliencyThreshold.toFixed(2)}</span>
+          <span className="font-semibold text-slate-800">Threshold: {saliencyThreshold.toFixed(2)}</span>
         </div>
       )}
     </div>
