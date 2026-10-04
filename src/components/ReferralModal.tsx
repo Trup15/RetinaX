@@ -167,7 +167,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-200">
           <div className="flex items-center gap-2 text-xs text-slate-600 font-mono">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>RetinaTrust AI · Selective Referral Protocol Verified</span>
+            <span>RetinaX · Selective Referral Protocol Verified</span>
           </div>
 
           <div className="flex items-center gap-3">
