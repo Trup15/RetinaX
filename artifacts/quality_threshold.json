@@ -1,0 +1,9 @@
+{
+  "threshold": 0.0,
+  "target_sensitivity": 0.95,
+  "val_sensitivity": 1.0,
+  "val_specificity": 0.9770642201834863,
+  "val_auc": 0.9997479584635548,
+  "test_fpr": null,
+  "fitted_on": "quality_validation_split"
+}

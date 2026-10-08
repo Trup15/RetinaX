@@ -59,6 +59,7 @@ is to show EfficientNet-B3 is a reasonable choice. ViT/Swin optional and last.
 
 ## 5. Quality model (MobileNetV3-Small on DDR)
 - Label: `ungradable = 1 if DDR class == 5 else 0` (model output index 1 = ungradable; **document and test the index mapping**).
+- **Note: Current DDR dataset has no class 5 (ungradable) images — all 12,524 are gradable (grades 0–4).** Quality model training will need synthetic ungradable images or a different dataset (e.g., original DDR with class 5, or EyePACS).
 - Train on DDR `train` list, select on `valid`, report on `test` (ungradable class: sensitivity, specificity, precision, F1, AUROC, confusion matrix).
 - Imbalance: ungradable is the minority. Use weighted CE (weight ∝ 1/freq) or a `WeightedRandomSampler`; report both classes.
 - `timm.create_model("mobilenetv3_small_100", pretrained=True, num_classes=2)`, input 320 px (blur needs resolution), AdamW lr 1e-3 → cosine, 15 epochs.
@@ -69,7 +70,7 @@ is to show EfficientNet-B3 is a reasonable choice. ViT/Swin optional and last.
 - Gate pass-rate on APTOS and IDRiD is reported as information only (no quality labels there).
 
 ## 6. External evaluation (unchanged model, no fine-tuning)
-For the primary model: APTOS internal test, IDRiD (all 516 graded images), DDR test (grades 0–4 only; count and report class-5 images separately).
+For the primary model: APTOS internal test, IDRiD (all 516 graded images), DDR test (grades 0–4 only; **3,146 images**).
 Metrics + 95 % bootstrap CI (1000 resamples): accuracy, balanced accuracy, macro-F1, QWK, per-class recall/precision/F1,
 macro one-vs-rest AUROC, referable (grade ≥ 2) sensitivity/specificity/AUROC, confusion matrix, NLL, Brier, ECE (before/after T),
 mean normalised entropy. Save raw `ids, labels, logits` for each dataset to `outputs/predictions/<dataset>_primary.npz`.

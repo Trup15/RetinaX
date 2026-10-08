@@ -28,7 +28,7 @@ ophthalmologist (needs: a referral sheet) · **researcher (primary user of v1)**
 - FR-4 Explanations on request: Grad-CAM++ (default), Score-CAM, Integrated Gradients.
 - FR-5 Lesion overlap (Dice, IoU, precision, recall, pointing game, lesion-AUROC) — **only** for images with ground-truth masks (IDRiD segmentation subset), via the research endpoint/CLI.
 - FR-6 Calibrated uncertainty and referral: τ chosen on validation data for a pre-declared referral rate; output `ACCEPT_GRADE` / `SPECIALIST_REFERRAL` / `RECAPTURE_IMAGE`; printable referral sheet.
-- FR-7 Cross-dataset benchmarking: APTOS internal test, IDRiD external, DDR-test external — one frozen primary model, no fine-tuning.
+- FR-7 Cross-dataset benchmarking: APTOS internal test, IDRiD external, DDR-test external (3,146 images) — one frozen primary model, no fine-tuning.
 - FR-8 Offline operation: no network calls in the screening path; ImageNet pretrained weights are fetched only by training scripts.
 - FR-9 Reproducibility: seeds, versions, configs, splits, predictions, per-image overlap tables saved for every result.
 

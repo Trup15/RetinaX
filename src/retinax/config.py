@@ -29,16 +29,33 @@ def _deep_merge(base: Dict, override: Dict) -> Dict:
     return result
 
 
-def _resolve_paths(obj: Any, root: Path) -> Any:
+# Fields that should NOT be resolved as paths
+NON_PATH_FIELDS = {
+    "device", "arch", "loss", "method", "ig_baseline", "class_names",
+    "target_layer", "optimizer", "scheduler", "criterion",
+    "lr", "weight_decay", "warmup_epochs", "epochs", "batch_size",
+    "drop_rate", "drop_path_rate", "grad_clip", "early_stop_patience",
+    "primary_fold", "num_classes", "num_workers", "pin_memory",
+    "img_size", "target_sensitivity", "target_rate", "ig_steps",
+    "ig_batch_size", "blur_sigma", "onnx_opset", "benchmark_runs",
+    "benchmark_warmup", "seed",
+}
+
+
+def _resolve_paths(obj: Any, root: Path, key: str = None) -> Any:
     if isinstance(obj, str):
+        # Skip resolution for known non-path fields
+        if key in NON_PATH_FIELDS:
+            return obj
         p = Path(obj)
         if not p.is_absolute():
             return str(root / p)
         return obj
     elif isinstance(obj, dict):
-        return {k: _resolve_paths(v, root) for k, v in obj.items()}
+        return {k: _resolve_paths(v, root, k) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [_resolve_paths(v, root) for v in obj]
+        # Pass the parent key to list items so NON_PATH_FIELDS works for list values
+        return [_resolve_paths(v, root, key) for v in obj]
     return obj
 
 
@@ -157,7 +174,7 @@ def load_config(config_path: Optional[str] = None, env_overrides: Optional[Dict]
             base_dict = yaml.safe_load(f)
         cfg_dict = _deep_merge(base_dict, cfg_dict)
 
-    cfg_dict = _resolve_paths(cfg_dict, REPO_ROOT)
+    cfg_dict = _resolve_paths(cfg_dict, REPO_ROOT, key="root")
 
     if env_overrides is None:
         env_overrides = {}
@@ -175,6 +192,12 @@ def load_config(config_path: Optional[str] = None, env_overrides: Optional[Dict]
             field_type = cls.__dataclass_fields__[k].type
             if hasattr(field_type, '__origin__') and field_type.__origin__ is list:
                 filtered[k] = list(v)
+            elif field_type is bool and isinstance(v, str):
+                filtered[k] = v.lower() in ("true", "1", "yes", "on")
+            elif field_type is int and isinstance(v, str):
+                filtered[k] = int(v)
+            elif field_type is float and isinstance(v, str):
+                filtered[k] = float(v)
         return cls(**filtered)
 
     return Config(

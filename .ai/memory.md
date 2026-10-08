@@ -46,6 +46,9 @@ Avoids albumentations API changes between 1.x and 2.x. Behaviour is specified in
 ## ADR-13 Primary model declared in advance (new)
 `primary_fold` is fixed in config before external evaluation; other folds give mean ± SD and an optional ensemble. Prevents picking the fold that looks best on IDRiD/DDR.
 
+## ADR-14 DDR dataset source (new)
+DDR dataset sourced from Kaggle `mariaherrerot/ddrdataset` — **12,524 images total (9,378 train + 3,146 test), grades 0–4 only, all gradable**. No class 5 (ungradable) images present. Label file `DR_grading.csv` with `id_code`, `diagnosis`. Folder structure: `DR_grading/train/`, `DR_grading/test/`. Quality model will need synthetic ungradable images or alternative dataset since no ungradable class exists in this split.
+
 ## Key constants (configuration, not facts)
 Image sizes: DR 384 (512 for final), quality 320, smoke 160. Referral target rate 0.15 (pre-declared, editable). Quality target sensitivity 0.95. XAI thresholds/fractions in `configs/default.yaml`.
 There are deliberately **no** constants for T, τ, blur threshold or Dice: they come from fitted files.

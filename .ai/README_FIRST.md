@@ -29,7 +29,7 @@ Real-data training is a separate, later step (needs a GPU and the three datasets
 ## Actions only the HUMAN can do (the agent must stop and ask, never fabricate data)
 - APTOS 2019: needs a Kaggle account, Kaggle API token (`kaggle.json`) and accepting the competition rules.
 - IDRiD: IEEE Dataport login (or a Kaggle mirror) — license/terms acceptance.
-- DDR: Kaggle or the DDR GitHub repo; large download.
+- DDR: **Already available locally** — 12,524 images (9,378 train + 3,146 test) in `smoke_data/DR_grading/` with `DR_grading.csv` labels. No download needed.
 - A GPU (Colab / Kaggle notebook / lab machine) to train EfficientNet-B3 at 384–512 px. CPU is fine only for the smoke test.
 - If any dataset is missing, the agent runs everything it can on the smoke data and clearly reports what is blocked.
 
@@ -39,8 +39,7 @@ Real-data training is a separate, later step (needs a GPU and the three datasets
   image has every lesion type (soft exudates in particular). Match masks to images by file name.
 - APTOS: `test.csv` has **no labels**. All labelled data is the 3,662 images of `train.csv`; the internal test set
   must be carved out of it.
-- DDR: grades 0–4 plus class 5 = ungradable; official train/valid/test lists exist. Verify the folder/list layout
-  after download; write `prepare_ddr.py` to emit the canonical metadata CSV (see `data_spec.md`).
+- DDR: **12,524 images total (9,378 train + 3,146 test), grades 0–4 only (no class 5/ungradable)**. Label file `DR_grading.csv` has `id_code`, `diagnosis`. Folder structure: `DR_grading/train/`, `DR_grading/test/`. No official train/valid/test split lists — using folder-based split.
 - Kaggle mirror folder layouts differ from the official ones. Never hard-code a path before listing the folder.
 
 ## Hard "no" list (copied here because it is the most common way these projects go wrong)

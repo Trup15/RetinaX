@@ -1,0 +1,17 @@
+image_path,cache_path,box_x0,box_y0,box_x1,box_y1,pad_top,pad_left,side,size,label
+idrid/images/IDRiD_000.png,160_no_clahe/IDRiD_000.png,26,26,486,486,0,0,460,160,0
+idrid/images/IDRiD_001.png,160_no_clahe/IDRiD_001.png,20,740,2829,3549,0,0,2809,160,1
+idrid/images/IDRiD_002.png,160_no_clahe/IDRiD_002.png,20,20,493,502,0,4,482,160,4
+idrid/images/IDRiD_003.png,160_no_clahe/IDRiD_003.png,20,20,498,493,2,0,478,160,0
+idrid/images/IDRiD_004.png,160_no_clahe/IDRiD_004.png,20,740,2829,3549,0,0,2809,160,0
+idrid/images/IDRiD_005.png,160_no_clahe/IDRiD_005.png,23,23,489,489,0,0,466,160,3
+idrid/images/IDRiD_006.png,160_no_clahe/IDRiD_006.png,27,27,485,485,0,0,458,160,2
+idrid/images/IDRiD_007.png,160_no_clahe/IDRiD_007.png,20,20,493,493,0,0,473,160,1
+idrid/images/IDRiD_008.png,160_no_clahe/IDRiD_008.png,20,20,493,493,0,0,473,160,1
+idrid/images/IDRiD_009.png,160_no_clahe/IDRiD_009.png,20,740,2829,3549,0,0,2809,160,1
+idrid/images/IDRiD_010.png,160_no_clahe/IDRiD_010.png,20,20,493,493,0,0,473,160,4
+idrid/images/IDRiD_011.png,160_no_clahe/IDRiD_011.png,20,740,2829,3549,0,0,2809,160,0
+idrid/images/IDRiD_012.png,160_no_clahe/IDRiD_012.png,20,20,492,492,0,0,472,160,2
+idrid/images/IDRiD_013.png,160_no_clahe/IDRiD_013.png,20,740,2829,3549,0,0,2809,160,0
+idrid/images/IDRiD_014.png,160_no_clahe/IDRiD_014.png,20,20,493,493,0,0,473,160,1
+idrid/images/IDRiD_015.png,160_no_clahe/IDRiD_015.png,20,20,493,493,0,0,473,160,0

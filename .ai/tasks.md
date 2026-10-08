@@ -14,14 +14,16 @@ Shell examples are bash; on Windows run the same `python -m ...` commands in Pow
 - [ ] **0.4 Config + utils.** Copy `templates/configs/*.yaml` to `configs/`; `retinax.config.load_config` (from `reference/config_loader.py`: handles `_extends` deep-merge, env overrides, repo-root paths), plus `get_device`, `seed_everything`, `run_info`.
   *Check:* `python -c "from retinax.config import load_config; c=load_config('configs/smoke.yaml'); print(c.dr.img_size, c.dr.pretrained, c.dr.epochs)"` prints `160 False 2`.
 
-## Phase 1 — Data layer (smoke data)
-- [ ] **1.1 Synthetic data.** Copy `reference/make_synthetic_data.py` → `scripts/`. 
-  *Check:* `python scripts/make_synthetic_data.py --out smoke_data` creates 3 metadata CSVs; every `image_path` exists; DDR rows with `gradable==0` have `label==5`.
-- [ ] **1.2 Splits.** `retinax.data.build_splits` per `ml_protocol.md §1` (hash groups, `StratifiedGroupKFold`).
+## Phase 1 — Data layer (smoke data + real DDR)
+- [ ] **1.1 Synthetic data (APTOS/IDRiD only).** Copy `reference/make_synthetic_data.py` → `scripts/`. 
+  *Check:* `python scripts/make_synthetic_data.py --out smoke_data` creates 2 metadata CSVs (aptos_meta.csv, idrid_meta.csv); every `image_path` exists.
+- [ ] **1.2 Real DDR metadata.** Run `python scripts/prepare_ddr.py --data-root smoke_data/DR_grading --label-file smoke_data/DR_grading.csv`.
+  *Check:* Creates `metadata/ddr_meta.csv` with 12,522 rows (9,376 train + 3,146 test), labels 0–4, all gradable=1, split column populated.
+- [ ] **1.3 Splits.** `retinax.data.build_splits` per `ml_protocol.md §1` (hash groups, `StratifiedGroupKFold`) — APTOS only.
   *Check:* test asserts: no `group` in two splits, test fold non-empty, `fold` ∈ 0..4 for dev rows, every class present in test+dev (on smoke data classes 3/4 may be tiny — then the check is "assertion logs a warning and reduces folds", not a crash).
-- [ ] **1.3 Cache.** `retinax.data.build_cache` writes the PNG cache + `*_cache.csv` with crop params.
+- [ ] **1.4 Cache.** `retinax.data.build_cache` writes the PNG cache + `*_cache.csv` with crop params for all datasets.
   *Check:* every `cache_path` exists, shape == `(img_size, img_size, 3)`, IDRiD mask transformed with stored params has non-zero pixels where the original mask had them (test with `apply_params_to_mask`).
-- [ ] **1.4 Dataset class.** `datasets.py` (`DRDataset`, `QualityDataset`) reading the cache CSVs; augmentation only in train mode; ImageNet normalisation; returns `(tensor, label, id)`.
+- [ ] **1.5 Dataset class.** `datasets.py` (`DRDataset`, `QualityDataset`) reading the cache CSVs; augmentation only in train mode; ImageNet normalisation; returns `(tensor, label, id)`.
   *Check:* a DataLoader batch has shape `(B,3,S,S)`, finite values, labels within range; two loads of an eval sample are identical, two loads of a train sample differ.
 
 ## Phase 2 — Training (smoke scale)
@@ -65,8 +67,10 @@ Shell examples are bash; on Windows run the same `python -m ...` commands in Pow
 - [ ] **7.2** Full `pytest -q` is green. Record versions and wall-clock in `memory.md`.
 
 ## Phase 8 — Real data (human prerequisites in README_FIRST)
-- [ ] **8.1 Prepare.** Inspect each real download, write `prepare_aptos.py / prepare_idrid.py / prepare_ddr.py`, produce canonical CSVs; print class counts and image-size stats; stop and ask on any missing file.
+- [ ] **8.1 Prepare APTOS/IDRiD.** Inspect each real download, write `prepare_aptos.py / prepare_idrid.py`, produce canonical CSVs; print class counts and image-size stats; stop and ask on any missing file.
+  **DDR is already prepared** — 12,524 images (9,378 train + 3,146 test) in `smoke_data/DR_grading/` with `metadata/ddr_meta.csv`.
 - [ ] **8.2 Train** (GPU): `train_dr --fold 0` first (`img_size: 384`), check against the sanity bands in `ml_protocol.md §3`, then folds 1–4; then `train_quality`. Training on Colab/Kaggle is fine: copy back `artifacts/*.pt` and `outputs/`.
+  **Note:** Quality model needs ungradable (class 5) images — generate synthetic or use alternative dataset.
 - [ ] **8.3 Evaluate → calibrate → uncertainty → XAI → benchmark**, in that order (`architecture.md §3`), with the primary fold declared **before** step 8.3 starts.
 - [ ] **8.4 Summary.** `retinax.results_summary` → `outputs/tables/summary.json`; paper tables/figures are generated from `outputs/` only.
 

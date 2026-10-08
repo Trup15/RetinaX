@@ -1,0 +1,17 @@
+image_path,label,ma_mask,he_mask,ex_mask,se_mask,has_masks
+idrid/images/IDRiD_000.png,0,idrid/masks/IDRiD_000_ma.png,idrid/masks/IDRiD_000_he.png,idrid/masks/IDRiD_000_ex.png,idrid/masks/IDRiD_000_se.png,1
+idrid/images/IDRiD_001.png,1,idrid/masks/IDRiD_001_ma.png,idrid/masks/IDRiD_001_he.png,idrid/masks/IDRiD_001_ex.png,idrid/masks/IDRiD_001_se.png,1
+idrid/images/IDRiD_002.png,4,idrid/masks/IDRiD_002_ma.png,idrid/masks/IDRiD_002_he.png,idrid/masks/IDRiD_002_ex.png,idrid/masks/IDRiD_002_se.png,1
+idrid/images/IDRiD_003.png,0,idrid/masks/IDRiD_003_ma.png,idrid/masks/IDRiD_003_he.png,idrid/masks/IDRiD_003_ex.png,idrid/masks/IDRiD_003_se.png,1
+idrid/images/IDRiD_004.png,0,idrid/masks/IDRiD_004_ma.png,idrid/masks/IDRiD_004_he.png,idrid/masks/IDRiD_004_ex.png,idrid/masks/IDRiD_004_se.png,1
+idrid/images/IDRiD_005.png,3,idrid/masks/IDRiD_005_ma.png,idrid/masks/IDRiD_005_he.png,idrid/masks/IDRiD_005_ex.png,idrid/masks/IDRiD_005_se.png,1
+idrid/images/IDRiD_006.png,2,idrid/masks/IDRiD_006_ma.png,idrid/masks/IDRiD_006_he.png,idrid/masks/IDRiD_006_ex.png,idrid/masks/IDRiD_006_se.png,1
+idrid/images/IDRiD_007.png,1,idrid/masks/IDRiD_007_ma.png,idrid/masks/IDRiD_007_he.png,idrid/masks/IDRiD_007_ex.png,idrid/masks/IDRiD_007_se.png,1
+idrid/images/IDRiD_008.png,1,,,,,0
+idrid/images/IDRiD_009.png,1,,,,,0
+idrid/images/IDRiD_010.png,4,,,,,0
+idrid/images/IDRiD_011.png,0,,,,,0
+idrid/images/IDRiD_012.png,2,,,,,0
+idrid/images/IDRiD_013.png,0,,,,,0
+idrid/images/IDRiD_014.png,1,,,,,0
+idrid/images/IDRiD_015.png,0,,,,,0
