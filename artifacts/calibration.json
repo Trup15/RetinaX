@@ -2,11 +2,11 @@
   "temperature": 0.001,
   "fitted_on": "aptos_fold0_val",
   "n_val": 20,
-  "ece_before": 0.055317139625549294,
+  "ece_before": 0.02063086032867434,
   "ece_after": 0.35,
-  "brier_before": 0.5502962115324546,
+  "brier_before": 0.5387283064197198,
   "brier_after": 0.7,
-  "nll_before": 1.220458984375,
+  "nll_before": 1.0422111749649048,
   "nll_after": 12.088571548461914,
   "seed": 42
 }
